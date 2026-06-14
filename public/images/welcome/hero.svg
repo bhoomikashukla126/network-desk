@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" fill="none" role="img" aria-label="Complaint tracking illustration">
+  <defs>
+    <linearGradient id="cd-bg" x1="0" y1="0" x2="640" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#eff6ff"/>
+      <stop offset="1" stop-color="#dbeafe"/>
+    </linearGradient>
+    <linearGradient id="cd-accent" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="480" rx="24" fill="url(#cd-bg)"/>
+  <circle cx="88" cy="96" r="64" fill="#3b82f6" fill-opacity="0.1"/>
+  <circle cx="552" cy="384" r="80" fill="#2563eb" fill-opacity="0.08"/>
+
+  <rect x="56" y="64" width="528" height="352" rx="20" fill="#fff" fill-opacity="0.94" stroke="#bfdbfe" stroke-width="1.5"/>
+  <rect x="80" y="88" width="160" height="12" rx="6" fill="#2563eb" fill-opacity="0.25"/>
+  <rect x="80" y="112" width="96" height="8" rx="4" fill="#94a3b8" fill-opacity="0.35"/>
+
+  <rect x="80" y="148" width="472" height="72" rx="14" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <circle cx="112" cy="184" r="16" fill="url(#cd-accent)"/>
+  <path d="M106 184l4 4 8-8" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="144" y="172" width="180" height="10" rx="5" fill="#2563eb" fill-opacity="0.35"/>
+  <rect x="144" y="190" width="120" height="8" rx="4" fill="#94a3b8" fill-opacity="0.4"/>
+  <rect x="460" y="168" width="72" height="28" rx="14" fill="#22c55e" fill-opacity="0.15"/>
+  <text x="476" y="187" fill="#15803d" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Resolved</text>
+
+  <rect x="80" y="236" width="472" height="72" rx="14" fill="#fff" stroke="#e2e8f0" stroke-width="1.5"/>
+  <circle cx="112" cy="272" r="16" fill="#f59e0b" fill-opacity="0.2" stroke="#f59e0b" stroke-width="2"/>
+  <text x="106" y="277" fill="#b45309" font-family="system-ui,sans-serif" font-size="14" font-weight="700">!</text>
+  <rect x="144" y="260" width="200" height="10" rx="5" fill="#334155" fill-opacity="0.25"/>
+  <rect x="144" y="278" width="140" height="8" rx="4" fill="#94a3b8" fill-opacity="0.4"/>
+  <rect x="448" y="256" width="84" height="28" rx="14" fill="#fef3c7"/>
+  <text x="462" y="275" fill="#b45309" font-family="system-ui,sans-serif" font-size="12" font-weight="600">In progress</text>
+
+  <rect x="80" y="324" width="472" height="72" rx="14" fill="#fff" stroke="#e2e8f0" stroke-width="1.5"/>
+  <circle cx="112" cy="360" r="16" fill="#e2e8f0"/>
+  <rect x="144" y="348" width="176" height="10" rx="5" fill="#334155" fill-opacity="0.2"/>
+  <rect x="144" y="366" width="112" height="8" rx="4" fill="#94a3b8" fill-opacity="0.35"/>
+  <rect x="468" y="344" width="64" height="28" rx="14" fill="#dbeafe"/>
+  <text x="482" y="363" fill="#1d4ed8" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Open</text>
+
+  <rect x="420" y="88" width="132" height="36" rx="18" fill="url(#cd-accent)"/>
+  <text x="448" y="111" fill="#fff" font-family="system-ui,sans-serif" font-size="13" font-weight="600">+ New case</text>
+</svg>
