@@ -167,6 +167,8 @@ let cableDraftLayer = null;
 let highlightLayer = null;
 let signalTraceLayer = null;
 let previewLayer = null;
+let userLocationMarker = null;
+let userLocationAccuracyCircle = null;
 let draftMarker = null;
 let draftCircle = null;
 let isDraggingDraft = false;
@@ -1343,8 +1345,58 @@ function escapeHtml(value) {
         .replaceAll('"', '&quot;');
 }
 
+function userLocationIcon() {
+    return L.divIcon({
+        className: 'network-user-location-marker-wrap',
+        html: '<div class="network-user-location-marker" aria-hidden="true"><span class="network-user-location-marker__pulse"></span><span class="network-user-location-marker__core"></span></div>',
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+    });
+}
+
+function clearUserLocationLayers() {
+    if (userLocationMarker && map) {
+        map.removeLayer(userLocationMarker);
+    }
+
+    if (userLocationAccuracyCircle && map) {
+        map.removeLayer(userLocationAccuracyCircle);
+    }
+
+    userLocationMarker = null;
+    userLocationAccuracyCircle = null;
+}
+
 function onLocationFound(event) {
     locationError.value = '';
+
+    if (!userLocationMarker) {
+        userLocationMarker = L.marker(event.latlng, {
+            icon: userLocationIcon(),
+            interactive: false,
+            zIndexOffset: 1200,
+        }).addTo(map);
+    } else {
+        userLocationMarker.setLatLng(event.latlng);
+    }
+
+    const accuracy = Number(event.accuracy ?? 0);
+
+    if (accuracy > 0) {
+        if (!userLocationAccuracyCircle) {
+            userLocationAccuracyCircle = L.circle(event.latlng, {
+                radius: accuracy,
+                weight: 1,
+                color: '#2563eb',
+                fillColor: '#3b82f6',
+                fillOpacity: 0.12,
+                interactive: false,
+            }).addTo(map);
+        } else {
+            userLocationAccuracyCircle.setLatLng(event.latlng);
+            userLocationAccuracyCircle.setRadius(accuracy);
+        }
+    }
 
     if (!hasCenteredOnUser.value) {
         hasCenteredOnUser.value = true;
@@ -1391,6 +1443,7 @@ function startLiveLocation() {
 
 function stopLiveLocation() {
     liveLocationActive.value = false;
+    clearUserLocationLayers();
 
     if (!map) {
         return;
@@ -1500,6 +1553,61 @@ onBeforeUnmount(() => {
 .network-map-shell :deep(.network-point-marker-wrap) {
     background: transparent;
     border: none;
+}
+
+.network-map-shell :deep(.network-user-location-marker-wrap) {
+    background: transparent;
+    border: none;
+}
+
+.network-map-shell :deep(.network-user-location-marker) {
+    position: relative;
+    width: 28px;
+    height: 28px;
+}
+
+.network-map-shell :deep(.network-user-location-marker__core) {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 2;
+    width: 14px;
+    height: 14px;
+    border: 2px solid #fff;
+    border-radius: 9999px;
+    background: #2563eb;
+    box-shadow: 0 1px 4px rgb(37 99 235 / 45%);
+    transform: translate(-50%, -50%);
+}
+
+.network-map-shell :deep(.network-user-location-marker__pulse) {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 1;
+    width: 28px;
+    height: 28px;
+    border-radius: 9999px;
+    background: rgb(59 130 246 / 28%);
+    transform: translate(-50%, -50%);
+    animation: network-user-location-pulse 2s ease-out infinite;
+}
+
+@keyframes network-user-location-pulse {
+    0% {
+        opacity: 0.85;
+        transform: translate(-50%, -50%) scale(0.55);
+    }
+
+    70% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.15);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.15);
+    }
 }
 
 .network-map-shell :deep(.network-marker) {
