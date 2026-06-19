@@ -236,6 +236,10 @@ html.dark .app-input[type='datetime-local']:hover::-webkit-calendar-picker-indic
     filter: brightness(1.12);
 }
 
+.app-overlay {
+    background-color: color-mix(in srgb, var(--theme-text-primary) 45%, transparent);
+}
+
 .hover-surface:hover {
     background-color: color-mix(in srgb, var(--theme-primary) 5%, var(--theme-card-bg));
 }
