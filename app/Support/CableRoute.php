@@ -145,6 +145,28 @@ class CableRoute
         return $path;
     }
 
+    public static function isCoreSideAtRoutePoint(CableSegment $cable, string $side, int $pointId): bool
+    {
+        $routePointIds = self::pointIds(self::normalize($cable->route, $cable));
+
+        if (count($routePointIds) < 2) {
+            return false;
+        }
+
+        $first = (int) $routePointIds[0];
+        $last = (int) $routePointIds[array_key_last($routePointIds)];
+
+        if ($side === 'start') {
+            return $pointId === $first;
+        }
+
+        if ($side === 'end') {
+            return $pointId === $last;
+        }
+
+        return false;
+    }
+
     /**
      * @param  array<string, mixed>  $validated
      * @return array<string, mixed>

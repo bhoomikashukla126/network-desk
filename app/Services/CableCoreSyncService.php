@@ -242,13 +242,15 @@ class CableCoreSyncService
      */
     public function connectionOptions(string $workspaceId, CableSegment $cable): array
     {
+        app(CableCoreConnectionCleanupService::class)->repairOrphanedConnections($workspaceId);
+
         $routePointIds = CableRoute::pointIds(CableRoute::normalize($cable->route, $cable));
 
         return CableCoreEnd::query()
             ->whereHas('core.cable', fn ($query) => $query->where('workspace_id', $workspaceId))
             ->when($routePointIds !== [], fn ($query) => $query->whereIn('network_point_id', $routePointIds))
             ->with([
-                'core.cable:id,name,core_count,cable_type',
+                'core.cable:id,name,core_count,cable_type,route,from_point_id,to_point_id',
                 'networkPoint:id,name',
                 'connectedCoreEnd.core.cable:id,name,core_count',
                 'networkPointPort:id,label',
@@ -256,6 +258,29 @@ class CableCoreSyncService
             ->orderBy('network_point_id')
             ->orderBy('id')
             ->get()
+            ->filter(function (CableCoreEnd $end) use ($routePointIds) {
+                $cable = $end->core?->cable;
+
+                if (! $cable) {
+                    return false;
+                }
+
+                $cableRouteIds = CableRoute::pointIds(CableRoute::normalize($cable->route, $cable));
+
+                if (count($cableRouteIds) < 2) {
+                    return false;
+                }
+
+                $expectedPointId = $end->side === 'start'
+                    ? (int) $cableRouteIds[0]
+                    : (int) $cableRouteIds[array_key_last($cableRouteIds)];
+
+                if (! in_array($expectedPointId, $routePointIds, true)) {
+                    return false;
+                }
+
+                return CableRoute::isCoreSideAtRoutePoint($cable, (string) $end->side, $expectedPointId);
+            })
             ->map(fn (CableCoreEnd $end) => [
                 'id' => $end->id,
                 'cable_id' => $end->core?->cable_segment_id,
@@ -268,6 +293,7 @@ class CableCoreSyncService
                 'network_point_id' => $end->network_point_id,
                 'network_point_name' => $end->networkPoint?->name,
                 'connection_type' => $end->connection_type,
+                'connected_core_end_id' => $end->connected_core_end_id,
                 'connection_label' => $this->connectionLabel($end),
             ])
             ->values()

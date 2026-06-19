@@ -186,7 +186,7 @@
                             class="app-input w-full rounded-xl border px-3.5 py-2 text-sm shadow-sm"
                             :placeholder="$t('cables.coreCountPlaceholder')"
                             :disabled="!canEdit"
-                            @change="onCoreCountChange"
+                            @input="onCoreCountChange"
                         >
                         <p class="mt-1 text-xs text-theme-muted">{{ $t('cables.coresHint') }}</p>
                     </div>
@@ -363,20 +363,29 @@
                                         <label class="app-label mb-1 block text-xs font-medium">{{ $t('cables.selectCoreEnd') }}</label>
                                         <p class="mb-1 text-[11px] text-theme-muted">{{ $t('cables.coreEndAtPoint', { name: side.pointLabel }) }}</p>
                                         <select
-                                            :value="core.ends[side.id].connected_core_end_id"
+                                            :value="core.ends[side.id].connected_core_end_id ?? ''"
                                             class="app-input w-full rounded-lg border px-2 py-1.5 text-xs shadow-sm"
                                             :disabled="!canEdit"
                                             @change="selectCoreEnd(core, side.id, $event.target.value)"
                                         >
-                                            <option :value="null">{{ $t('cables.connectionNone') }}</option>
-                                            <option
-                                                v-for="option in connectionOptionsForCore(core, side.id)"
-                                                :key="option.id"
-                                                :value="option.id"
+                                            <option value="">{{ $t('cables.connectionNone') }}</option>
+                                            <optgroup
+                                                v-for="group in connectionOptionGroupsForCore(core, side.id)"
+                                                :key="group.cable_id"
+                                                :label="spliceCableGroupLabel(group)"
                                             >
-                                                {{ formatCoreConnectionOptionLabel(option) }}
-                                            </option>
+                                                <option
+                                                    v-for="option in group.options"
+                                                    :key="option.id"
+                                                    :value="option.id"
+                                                >
+                                                    {{ formatCoreConnectionOptionLabel(option) }}
+                                                </option>
+                                            </optgroup>
                                         </select>
+                                        <p v-if="coresNeedingSpliceOnSide(side.id) > 0" class="mb-1 text-[11px] text-theme-muted">
+                                            {{ $t('cables.coresNeedingSplice', { count: coresNeedingSpliceOnSide(side.id) }) }}
+                                        </p>
                                         <p v-if="!connectionOptionsForCore(core, side.id).length" class="mt-1 text-xs text-theme-muted">
                                             {{ $t('cables.noCoreEndsAtPoint') }}
                                         </p>
@@ -523,7 +532,9 @@
                 </div>
             </div>
 
-            <div class="mt-3 flex shrink-0 flex-wrap gap-2 border-t border-theme pt-3">
+            <div class="mt-3 flex shrink-0 flex-col gap-2 border-t border-theme pt-3">
+                <p v-if="saveError" class="text-xs text-rose-600">{{ saveError }}</p>
+                <div class="flex flex-wrap gap-2">
                 <button
                     v-if="canEdit"
                     type="submit"
@@ -557,6 +568,7 @@
                 >
                     {{ $t('points.viewOnly') }}
                 </button>
+                </div>
             </div>
         </form>
     </aside>
@@ -576,13 +588,16 @@ import {
     collectCoreConnectionOptionsAtPoint,
     collectUsedPortIds,
     coreFormFromApi,
+    countCoresNeedingSpliceOnSide,
     FIBER_CORE_COLOR_OPTIONS,
     FIBER_CORE_COLORS,
     fiberCoreColorName,
+    filterCoreSpliceOptionsByCableCapacity,
     formatCoreConnectionOption,
     formatDeviceConnectionSummary,
     formatDevicePortOption,
     formatDistanceM,
+    groupCoreConnectionOptionsByCable,
     isCoreEndAvailableForSplice,
     preferredPortDirectionForCoreSide,
     pointTypeLabels,
@@ -605,6 +620,7 @@ const props = defineProps({
     saving: { type: Boolean, default: false },
     savingCableType: { type: Boolean, default: false },
     cableTypeError: { type: String, default: '' },
+    saveError: { type: String, default: '' },
 });
 
 const emit = defineEmits([
@@ -843,7 +859,10 @@ function portsClaimedInForm(excludeCoreNumber = null, excludeSideId = null) {
 }
 
 function devicePortGroupsWithAvailablePorts(side, core, sideId) {
-    return devicePortGroupsForSidePreferred(side)
+    const preferredGroups = devicePortGroupsForSidePreferred(side);
+    const groups = preferredGroups.length > 0 ? preferredGroups : devicePortGroupsForSide(side);
+
+    return groups
         .map((group) => ({
             ...group,
             ports: portsAvailableForGroup(side, core, sideId, group),
@@ -854,8 +873,16 @@ function devicePortGroupsWithAvailablePorts(side, core, sideId) {
 function activeConnectionMode(core, side) {
     const end = core.ends[side.id];
 
-    if (end.connection_type === 'device' || end.connection_type === 'core_end') {
-        return end.connection_type;
+    if (end.connection_type === 'device') {
+        if (end.network_point_port_id || String(end.device_port_label ?? '').trim()) {
+            return 'device';
+        }
+    }
+
+    if (end.connection_type === 'core_end') {
+        if (end.connected_core_end_id) {
+            return 'core_end';
+        }
     }
 
     const modes = sideConnectionModesList(side);
@@ -1002,6 +1029,8 @@ function selectDevicePort(core, sideId, value) {
         core.ends[sideId].device_port_label = port.label;
         core.ends[sideId].device_port_direction = port.direction;
     }
+
+    invalidateCoreOptionCaches();
 }
 
 function selectCoreEnd(core, sideId, value) {
@@ -1009,6 +1038,8 @@ function selectCoreEnd(core, sideId, value) {
 
     if (!value) {
         core.ends[sideId].connection_type = '';
+        invalidateCoreOptionCaches();
+
         return;
     }
 
@@ -1019,6 +1050,7 @@ function selectCoreEnd(core, sideId, value) {
     core.ends[sideId].device_label = '';
     core.ends[sideId].device_port_label = '';
     core.ends[sideId].device_port_direction = preferredPortDirectionForCoreSide(sideId);
+    invalidateCoreOptionCaches();
 }
 
 const bendCount = computed(() => (
@@ -1068,31 +1100,35 @@ function setActiveTab(tabId) {
     }
 }
 
-function ensureCoresLoaded() {
-    const count = Number(form.core_count || 0);
+function syncCoresFormToCount({ applyDefaults = false } = {}) {
+    const count = Math.max(0, Math.min(288, Number(form.core_count) || 0));
+    form.core_count = count;
 
-    if (count <= 0 || form.cores.length > 0) {
+    if (count <= 0) {
+        form.cores = [];
+        coresTabReady.value = false;
+        invalidateCoreOptionCaches();
+
         return;
     }
 
-    const existing = (props.cable?.cores ?? []).map((core) => coreFormFromApi(core, fiberPalette.value));
-    form.cores = buildCoresForm(count, existing, fiberPalette.value);
+    const preserved = form.cores.length > 0
+        ? form.cores
+        : (props.cable?.cores ?? []).map((core) => coreFormFromApi(core, fiberPalette.value));
+
+    form.cores = buildCoresForm(count, preserved, fiberPalette.value);
+    coresTabReady.value = true;
     invalidateCoreOptionCaches();
+
+    if (applyDefaults) {
+        applyCoreEndDefaults();
+    }
 }
 
 function scheduleCoresTabRender() {
-    if (coresTabReady.value) {
-        return;
-    }
-
     nextTick(() => {
         requestAnimationFrame(() => {
-            ensureCoresLoaded();
-            coresTabReady.value = true;
-
-            if (form.core_count > 0) {
-                nextTick(() => applyCoreEndDefaults());
-            }
+            syncCoresFormToCount({ applyDefaults: true });
         });
     });
 }
@@ -1130,44 +1166,74 @@ function syncCoresFromCable(cable) {
 }
 
 function onCoreCountChange() {
-    const count = Math.max(0, Math.min(288, Number(form.core_count) || 0));
-    form.core_count = count;
+    syncCoresFormToCount({ applyDefaults: true });
+}
 
-    if (count <= 0) {
-        form.cores = [];
-        coresTabReady.value = false;
-        invalidateCoreOptionCaches();
+function reservedSpliceEndIds(excludeCoreNumber = null, excludeSideId = null) {
+    const ids = new Set();
 
-        return;
+    for (const core of form.cores) {
+        for (const sideId of ['start', 'end']) {
+            if (core.core_number === excludeCoreNumber && sideId === excludeSideId) {
+                continue;
+            }
+
+            const partnerId = core.ends?.[sideId]?.connected_core_end_id;
+
+            if (partnerId) {
+                ids.add(Number(partnerId));
+            }
+        }
     }
 
-    form.cores = buildCoresForm(count, form.cores, fiberPalette.value);
-    coresTabReady.value = true;
-    invalidateCoreOptionCaches();
-    applyCoreEndDefaults();
+    return ids;
+}
+
+function coresNeedingSpliceOnSide(sideId) {
+    return countCoresNeedingSpliceOnSide(form.cores, sideId);
+}
+
+function spliceCableGroupLabel(group) {
+    return t('cables.spliceCableGroup', {
+        name: group.cable_name,
+        count: group.available,
+    });
 }
 
 function connectionOptionsForCore(core, sideId) {
     const sideMeta = coreSides.value.find((item) => item.id === sideId);
     const ownEndId = ownCoreEndId(core, sideId);
     const currentPartnerId = core.ends?.[sideId]?.connected_core_end_id ?? null;
+    const reservedEndIds = reservedSpliceEndIds(core.core_number, sideId);
+    const pointId = sideMeta?.pointId ? Number(sideMeta.pointId) : null;
 
-    const options = sideMeta?.pointId
-        ? spliceOptionsForPoint(Number(sideMeta.pointId))
+    const rawOptions = pointId
+        ? spliceOptionsForPoint(pointId)
         : props.connectionOptions.filter((option) => {
             if (ownEndId && Number(option.id) === Number(ownEndId)) {
                 return false;
             }
 
-            if (sideMeta?.pointId && Number(option.network_point_id) !== Number(sideMeta.pointId)) {
+            if (pointId && Number(option.network_point_id) !== pointId) {
                 return false;
             }
 
             return true;
         });
 
-    return options.filter((option) => {
+    return filterCoreSpliceOptionsByCableCapacity(rawOptions, {
+        cables: sourceCables(),
+        pointId,
+        coresNeedingSplice: 1,
+        reservedEndIds,
+        currentEndId: ownEndId,
+        currentPartnerId,
+    }).filter((option) => {
         if (ownEndId && Number(option.id) === Number(ownEndId)) {
+            return false;
+        }
+
+        if (Number(option.cable_id) === Number(props.cable?.id)) {
             return false;
         }
 
@@ -1176,6 +1242,23 @@ function connectionOptionsForCore(core, sideId) {
             currentPartnerId,
         });
     });
+}
+
+function connectionOptionGroupsForCore(core, sideId) {
+    const sideMeta = coreSides.value.find((item) => item.id === sideId);
+    const pointId = sideMeta?.pointId ? Number(sideMeta.pointId) : null;
+
+    if (!pointId) {
+        return [];
+    }
+
+    const options = connectionOptionsForCore(core, sideId);
+
+    return groupCoreConnectionOptionsByCable(options, sourceCables(), pointId, {
+        reservedEndIds: reservedSpliceEndIds(core.core_number, sideId),
+        currentEndId: ownCoreEndId(core, sideId),
+        currentPartnerId: core.ends?.[sideId]?.connected_core_end_id ?? null,
+    }).filter((group) => group.options.length > 0);
 }
 
 watch(() => normalizeCableId(props.cable?.id), (cableId, previousId) => {
@@ -1226,6 +1309,7 @@ function submitJoin() {
 }
 
 function save() {
+    syncCoresFormToCount();
     const corePayload = serializeCoresForm(form.core_count, form.cores);
 
     emit('save', {

@@ -156,6 +156,7 @@
                         :saving="savingCable"
                         :saving-cable-type="savingCableType"
                         :cable-type-error="cableTypeError"
+                        :save-error="cableSaveError"
                         @close="closePanel"
                         @save="saveCable"
                         @delete="deleteCable"
@@ -845,6 +846,7 @@ async function saveCable(payload) {
     }
 
     savingCable.value = true;
+    cableSaveError.value = '';
 
     try {
         const response = await api(`/api/network/cables/${selectedCable.value.id}`, {
@@ -853,6 +855,14 @@ async function saveCable(payload) {
         });
         selectedCable.value = response.data;
         await Promise.all([loadCables(), loadCoreConnectionOptions(selectedCable.value.id)]);
+    } catch (error) {
+        cableSaveError.value = error.errors?.route?.[0]
+            ?? error.errors?.cores?.[0]
+            ?? error.errors?.core_count?.[0]
+            ?? error.message
+            ?? t('map.saveCableFailed');
+        focusMobilePanel();
+        throw error;
     } finally {
         savingCable.value = false;
     }

@@ -39,6 +39,27 @@ export function normalizePointTypes(point) {
     return ['junction'];
 }
 
+const LOCATION_EPSILON = 1e-5;
+
+export function isSameLocation(left, right, epsilon = LOCATION_EPSILON) {
+    return Math.abs(Number(left?.latitude) - Number(right?.latitude)) < epsilon
+        && Math.abs(Number(left?.longitude) - Number(right?.longitude)) < epsilon;
+}
+
+export function findPointsAtLocation(points, latitude, longitude, epsilon = LOCATION_EPSILON) {
+    const target = { latitude, longitude };
+
+    return (points ?? []).filter((point) => isSameLocation(point, target, epsilon));
+}
+
+export function colocatedPointsCount(points, point, epsilon = LOCATION_EPSILON) {
+    if (!point) {
+        return 0;
+    }
+
+    return findPointsAtLocation(points, point.latitude, point.longitude, epsilon).length;
+}
+
 export function primaryPointType(point) {
     return normalizePointTypes(point)[0];
 }
@@ -84,7 +105,7 @@ export function pointTypeIcon(type) {
 }
 
 export function buildMarkerHtml(point, options = {}) {
-    const { selected = false, dragging = false, cableTarget = false, preview = false } = options;
+    const { selected = false, dragging = false, cableTarget = false, preview = false, stackCount = 0 } = options;
     const types = normalizePointTypes(point);
     const primaryType = types[0];
     const color = pointColor(primaryType);
@@ -112,12 +133,17 @@ export function buildMarkerHtml(point, options = {}) {
         ? `<span class="network-marker__multi" title="${escapeHtml(typeLabel)}">${types.length}</span>`
         : '';
 
+    const stackBadge = stackCount > 1
+        ? `<span class="network-marker__stack" title="${stackCount} points here">${stackCount}</span>`
+        : '';
+
     return `
         <div class="${classes}" title="${escapeHtml(name || typeLabel)}">
             ${(selected || preview) ? '<span class="network-marker__ring"></span><span class="network-marker__ring network-marker__ring--delayed"></span>' : ''}
             <span class="network-marker__pin" style="--marker-color:${color}">
                 <span class="network-marker__icon">${pointTypeIcon(primaryType || 'junction')}</span>
                 ${multiBadge}
+                ${stackBadge}
             </span>
             ${label}
         </div>
@@ -206,6 +232,43 @@ export function cableRoutePointIds(cable) {
     return cableRouteNodes(cable)
         .filter((node) => node.type === 'point' && node.point_id != null)
         .map((node) => Number(node.point_id));
+}
+
+/**
+ * A fiber core's start end lives at the route origin; its end end at the route terminus.
+ */
+export function isCoreSideAtRoutePoint(cable, side, pointId) {
+    const routePointIds = cableRoutePointIds(cable);
+
+    if (routePointIds.length < 2) {
+        return false;
+    }
+
+    const first = Number(routePointIds[0]);
+    const last = Number(routePointIds[routePointIds.length - 1]);
+    const target = Number(pointId);
+
+    if (side === 'start') {
+        return target === first;
+    }
+
+    if (side === 'end') {
+        return target === last;
+    }
+
+    return false;
+}
+
+export function resolvedCoreEndPointId(cable, side) {
+    const routePointIds = cableRoutePointIds(cable);
+
+    if (routePointIds.length < 2) {
+        return null;
+    }
+
+    return side === 'start'
+        ? Number(routePointIds[0])
+        : Number(routePointIds[routePointIds.length - 1]);
 }
 
 export function routeCoordinatesFromNodes(nodes, pointsById) {
@@ -1050,6 +1113,11 @@ export function applyAutoCoreEndDefaults(cores, cable, cables, pointsById, { pre
                 continue;
             }
 
+            // Leave multi-core sides open for manual wiring (e.g. two fibers at customer ONT).
+            if (cores.length > 1) {
+                continue;
+            }
+
             const pointId = sideId === 'start' ? startPointId : endPointId;
             const point = pointsById[pointId];
             const usedPortIds = new Set([...dbUsedPorts.keys(), ...formUsedPorts]);
@@ -1129,8 +1197,6 @@ export function collectCoreConnectionOptionsAtPoint(cables, pointId, { excludeEn
     const options = [];
 
     for (const cable of cables ?? []) {
-        const routePointIds = cableRoutePointIds(cable);
-
         for (const core of cable.cores ?? []) {
             for (const side of ['start', 'end']) {
                 const end = core.ends?.[side];
@@ -1143,10 +1209,13 @@ export function collectCoreConnectionOptionsAtPoint(cables, pointId, { excludeEn
                     continue;
                 }
 
-                const endPointId = end.network_point_id
-                    ?? (side === 'start' ? routePointIds[0] : routePointIds[routePointIds.length - 1]);
+                if (!isCoreSideAtRoutePoint(cable, side, pointId)) {
+                    continue;
+                }
 
-                if (Number(endPointId) !== Number(pointId)) {
+                const endPointId = resolvedCoreEndPointId(cable, side);
+
+                if (endPointId == null || Number(endPointId) !== Number(pointId)) {
                     continue;
                 }
 
@@ -1161,6 +1230,7 @@ export function collectCoreConnectionOptionsAtPoint(cables, pointId, { excludeEn
                     network_point_id: endPointId,
                     network_point_name: end.network_point_name ?? null,
                     connection_type: end.connection_type ?? null,
+                    connected_core_end_id: end.connected_core_end_id ?? null,
                     connection_label: end.connection_label ?? null,
                 });
             }
@@ -1302,18 +1372,46 @@ function pointNameFromId(pointId, pointsById) {
     return pointsById[pointId]?.name ?? `Point #${pointId}`;
 }
 
+function coreEndOppositeSide(side) {
+    return side === 'start' ? 'end' : 'start';
+}
+
+function findDeviceConnectedCoreEnd(core, pointId, portId, portDirection) {
+    for (const side of ['start', 'end']) {
+        const deviceEnd = core.ends?.[side];
+
+        if (
+            deviceEnd?.connection_type === 'device'
+            && Number(deviceEnd.network_point_id) === Number(pointId)
+            && Number(deviceEnd.network_point_port_id) === Number(portId)
+            && deviceEnd.device_port_direction === portDirection
+        ) {
+            const farSide = coreEndOppositeSide(side);
+
+            return {
+                side,
+                deviceEnd,
+                farEnd: core.ends?.[farSide],
+            };
+        }
+    }
+
+    return null;
+}
+
 function findIncomingCoreAtPort(cables, pointId, portId) {
     for (const cable of cables ?? []) {
         for (const core of cable.cores ?? []) {
-            const end = core.ends?.end;
+            const match = findDeviceConnectedCoreEnd(core, pointId, portId, 'input');
 
-            if (
-                end?.connection_type === 'device'
-                && Number(end.network_point_id) === Number(pointId)
-                && Number(end.network_point_port_id) === Number(portId)
-                && end.device_port_direction === 'input'
-            ) {
-                return { cable, core, start: core.ends?.start, end };
+            if (match) {
+                return {
+                    cable,
+                    core,
+                    deviceSide: match.side,
+                    deviceEnd: match.deviceEnd,
+                    farEnd: match.farEnd,
+                };
             }
         }
     }
@@ -1326,15 +1424,16 @@ function findOutgoingCoresFromPort(cables, pointId, portId) {
 
     for (const cable of cables ?? []) {
         for (const core of cable.cores ?? []) {
-            const start = core.ends?.start;
+            const match = findDeviceConnectedCoreEnd(core, pointId, portId, 'output');
 
-            if (
-                start?.connection_type === 'device'
-                && Number(start.network_point_id) === Number(pointId)
-                && Number(start.network_point_port_id) === Number(portId)
-                && start.device_port_direction === 'output'
-            ) {
-                matches.push({ cable, core, start, end: core.ends?.end });
+            if (match) {
+                matches.push({
+                    cable,
+                    core,
+                    deviceSide: match.side,
+                    deviceEnd: match.deviceEnd,
+                    end: match.farEnd,
+                });
             }
         }
     }
@@ -1345,15 +1444,25 @@ function findOutgoingCoresFromPort(cables, pointId, portId) {
 function findTrunkIntoSplitter(cables, splitterPointId) {
     for (const cable of cables ?? []) {
         for (const core of cable.cores ?? []) {
-            const end = core.ends?.end;
+            for (const side of ['start', 'end']) {
+                const deviceEnd = core.ends?.[side];
 
-            if (
-                end?.connection_type === 'device'
-                && Number(end.network_point_id) === Number(splitterPointId)
-                && end.device_port_direction === 'input'
-                && String(end.device_port_label ?? '').toUpperCase() === 'IN'
-            ) {
-                return { cable, core, start: core.ends?.start, end };
+                if (
+                    deviceEnd?.connection_type === 'device'
+                    && Number(deviceEnd.network_point_id) === Number(splitterPointId)
+                    && deviceEnd.device_port_direction === 'input'
+                    && String(deviceEnd.device_port_label ?? '').toUpperCase() === 'IN'
+                ) {
+                    const farSide = coreEndOppositeSide(side);
+
+                    return {
+                        cable,
+                        core,
+                        deviceSide: side,
+                        deviceEnd,
+                        farEnd: core.ends?.[farSide],
+                    };
+                }
             }
         }
     }
@@ -1361,14 +1470,193 @@ function findTrunkIntoSplitter(cables, splitterPointId) {
     return null;
 }
 
-function buildHop(pointId, portLabel, portDirection, pointsById) {
+function buildHop(
+    pointId,
+    portLabel,
+    portDirection,
+    pointsById,
+    deviceLabel = null,
+    pointType = null,
+    deviceType = null,
+) {
     return {
         kind: 'point',
         pointId: Number(pointId),
         pointName: pointNameFromId(pointId, pointsById),
+        pointType: pointType ?? null,
         portLabel,
         portDirection,
+        deviceLabel: deviceLabel?.trim() || null,
+        deviceType: deviceType ?? null,
     };
+}
+
+function signalPortDirectionLabel(direction, translate = null) {
+    return direction === 'input'
+        ? (translate?.('cables.portInput') ?? 'Input')
+        : (translate?.('cables.portOutput') ?? 'Output');
+}
+
+function resolveTypeLabel(type, typeLabels = {}) {
+    if (!type) {
+        return null;
+    }
+
+    return typeLabels[type] ?? pointTypeLabel(type);
+}
+
+function formatPointCaption(point, typeLabels = {}) {
+    const name = point?.name ?? (point?.id ? `Point #${point.id}` : 'Point');
+    const type = resolveTypeLabel(primaryPointType(point), typeLabels);
+
+    return type ? `${name} (${type})` : name;
+}
+
+function formatDeviceCaption(device, typeLabels = {}) {
+    if (!device) {
+        return null;
+    }
+
+    const type = resolveTypeLabel(device.type, typeLabels);
+
+    if (device.label?.trim() && type) {
+        return `${device.label.trim()} (${type})`;
+    }
+
+    return device.label?.trim() || type || null;
+}
+
+function formatHopPointCaption(hop, typeLabels = {}) {
+    if (!hop || hop.kind !== 'point') {
+        return hop?.label ?? '';
+    }
+
+    const type = resolveTypeLabel(hop.pointType, typeLabels);
+    const name = hop.pointName ?? `Point #${hop.pointId}`;
+
+    return type ? `${name} (${type})` : name;
+}
+
+function formatHopDeviceCaption(hop, typeLabels = {}) {
+    if (!hop?.deviceLabel && !hop?.deviceType) {
+        return null;
+    }
+
+    const type = resolveTypeLabel(hop.deviceType, typeLabels);
+
+    if (hop.deviceLabel && type) {
+        return `${hop.deviceLabel} (${type})`;
+    }
+
+    return hop.deviceLabel || type || null;
+}
+
+/**
+ * Short label for signal path cards — device name and point/device type only.
+ */
+function signalPathCardLabel(hop, pointsById = {}, typeLabels = {}) {
+    if (!hop || hop.kind !== 'point') {
+        return hop?.label ?? 'Path';
+    }
+
+    const point = pointsById[hop.pointId];
+    const deviceName = hop.deviceLabel?.trim();
+    const type = resolveTypeLabel(
+        hop.deviceType ?? hop.pointType ?? primaryPointType(point),
+        typeLabels,
+    );
+
+    if (deviceName && type) {
+        return `${deviceName} (${type})`;
+    }
+
+    if (deviceName) {
+        return deviceName;
+    }
+
+    if (type) {
+        return type;
+    }
+
+    return hop.pointName ?? `Point #${hop.pointId}`;
+}
+
+/**
+ * Human-readable caption for a signal path point hop.
+ */
+export function formatSignalPointHop(hop, typeLabels = {}, translate = null) {
+    if (hop?.kind !== 'point') {
+        return hop?.label ?? '';
+    }
+
+    const parts = [formatHopPointCaption(hop, typeLabels)];
+    const deviceCaption = formatHopDeviceCaption(hop, typeLabels);
+
+    if (deviceCaption) {
+        parts.push(deviceCaption);
+    }
+
+    parts.push(`${hop.portLabel ?? '—'} (${signalPortDirectionLabel(hop.portDirection, translate)})`);
+
+    return parts.join(' · ');
+}
+
+function formatSignalEndpointCaption(hop, typeLabels = {}, translate = null, includePortDirection = true) {
+    if (!hop || hop.kind !== 'point') {
+        return hop?.label ?? '';
+    }
+
+    const parts = [formatHopPointCaption(hop, typeLabels)];
+    const deviceCaption = formatHopDeviceCaption(hop, typeLabels);
+
+    if (deviceCaption) {
+        parts.push(deviceCaption);
+    }
+
+    if (hop.portLabel) {
+        if (includePortDirection) {
+            parts.push(`${hop.portLabel} (${signalPortDirectionLabel(hop.portDirection, translate)})`);
+        } else {
+            parts.push(hop.portLabel);
+        }
+    }
+
+    return parts.join(' · ');
+}
+
+function buildHopFromPort(pointId, portId, pointsById) {
+    const point = pointsById[pointId];
+    const port = portFromPoint(point, portId);
+    const device = deviceForPort(point, portId);
+
+    return buildHop(
+        pointId,
+        port?.label ?? '—',
+        port?.direction ?? 'input',
+        pointsById,
+        device?.label ?? null,
+        primaryPointType(point),
+        device?.type ?? null,
+    );
+}
+
+function buildHopFromCoreEnd(end, pointsById) {
+    const point = pointsById[end.network_point_id];
+    const device = deviceForPort(point, end.network_point_port_id);
+
+    return buildHop(
+        Number(end.network_point_id),
+        portLabelFromEnd(end, pointsById),
+        end.device_port_direction ?? 'output',
+        pointsById,
+        end.device_label ?? device?.label ?? null,
+        primaryPointType(point),
+        end.device_type ?? device?.type ?? null,
+    );
+}
+
+function signalEndpointLabel(hop, typeLabels = {}, translate = null) {
+    return signalPathCardLabel(hop, {}, typeLabels);
 }
 
 function findCoreEndById(cables, endId) {
@@ -1515,11 +1803,19 @@ export function isCoreEndAvailableForSplice(option, { currentEndId = null, curre
     }
 
     if (option.connection_type === 'device') {
+        if (!option.network_point_port_id && !String(option.device_port_label ?? '').trim()) {
+            return true;
+        }
+
         return false;
     }
 
-    if (option.connection_type === 'core_end' && option.connected_core_end_id) {
-        if (currentEndId && Number(option.connected_core_end_id) === Number(currentEndId)) {
+    if (option.connection_type === 'core_end') {
+        if (!option.connected_core_end_id) {
+            return true;
+        }
+
+        if (currentEndId && option.connected_core_end_id && Number(option.connected_core_end_id) === Number(currentEndId)) {
             return true;
         }
 
@@ -1527,6 +1823,134 @@ export function isCoreEndAvailableForSplice(option, { currentEndId = null, curre
     }
 
     return true;
+}
+
+/**
+ * Count open (unspliced) core ends for a cable at a route point.
+ */
+export function countAvailableCoreEndsForCableAtPoint(cables, cableId, pointId, {
+    reservedEndIds = new Set(),
+    currentEndId = null,
+    currentPartnerId = null,
+} = {}) {
+    if (!cableId || !pointId) {
+        return 0;
+    }
+
+    const cable = (cables ?? []).find((item) => Number(item.id) === Number(cableId));
+
+    if (!cable) {
+        return 0;
+    }
+
+    let count = 0;
+
+    for (const core of cable.cores ?? []) {
+        for (const side of ['start', 'end']) {
+            const end = core.ends?.[side];
+
+            if (!end?.id) {
+                continue;
+            }
+
+            if (!isCoreSideAtRoutePoint(cable, side, pointId)) {
+                continue;
+            }
+
+            const endPointId = resolvedCoreEndPointId(cable, side);
+
+            if (endPointId == null || Number(endPointId) !== Number(pointId)) {
+                continue;
+            }
+
+            if (reservedEndIds.has(Number(end.id))) {
+                continue;
+            }
+
+            if (isCoreEndAvailableForSplice({
+                ...end,
+                id: end.id,
+                cable_id: cable.id,
+            }, { currentEndId, currentPartnerId })) {
+                count += 1;
+            }
+        }
+    }
+
+    return count;
+}
+
+/**
+ * How many cores on this cable side still need a splice or device connection.
+ */
+export function countCoresNeedingSpliceOnSide(cores, sideId) {
+    return (cores ?? []).filter((core) => !isCoreEndConfigured(core.ends?.[sideId])).length;
+}
+
+/**
+ * Keep only splice targets on cables with enough remaining open cores at the junction.
+ */
+export function filterCoreSpliceOptionsByCableCapacity(options, {
+    cables,
+    pointId,
+    coresNeedingSplice = 1,
+    reservedEndIds = new Set(),
+    currentEndId = null,
+    currentPartnerId = null,
+} = {}) {
+    const needed = Math.max(1, Number(coresNeedingSplice) || 1);
+
+    return (options ?? []).filter((option) => {
+        if (!isCoreEndAvailableForSplice(option, { currentEndId, currentPartnerId })) {
+            return false;
+        }
+
+        if (reservedEndIds.has(Number(option.id))) {
+            return Number(option.id) === Number(currentPartnerId);
+        }
+
+        const availableOnCable = countAvailableCoreEndsForCableAtPoint(
+            cables,
+            option.cable_id,
+            pointId,
+            { reservedEndIds, currentEndId, currentPartnerId },
+        );
+
+        return availableOnCable >= needed || Number(option.id) === Number(currentPartnerId);
+    });
+}
+
+/**
+ * @returns {Array<{ cable_id: number, cable_name: string, available: number, options: Array<object> }>}
+ */
+export function groupCoreConnectionOptionsByCable(options, cables, pointId, {
+    reservedEndIds = new Set(),
+    currentEndId = null,
+    currentPartnerId = null,
+} = {}) {
+    const groups = new Map();
+
+    for (const option of options ?? []) {
+        if (!groups.has(option.cable_id)) {
+            groups.set(option.cable_id, {
+                cable_id: option.cable_id,
+                cable_name: option.cable_name ?? `Cable #${option.cable_id}`,
+                available: countAvailableCoreEndsForCableAtPoint(
+                    cables,
+                    option.cable_id,
+                    pointId,
+                    { reservedEndIds, currentEndId, currentPartnerId },
+                ),
+                options: [],
+            });
+        }
+
+        groups.get(option.cable_id).options.push(option);
+    }
+
+    return Array.from(groups.values()).sort((left, right) => (
+        String(left.cable_name).localeCompare(String(right.cable_name))
+    ));
 }
 
 function buildSpliceHop(fromCable, fromCore, toCable, toCore, pointsById, junctionPointId) {
@@ -1565,6 +1989,24 @@ function portFromPoint(point, portId) {
     }
 
     return null;
+}
+
+function deviceForPort(point, portId) {
+    for (const device of point?.devices ?? []) {
+        if ((device.ports ?? []).some((port) => Number(port.id) === Number(portId))) {
+            return device;
+        }
+    }
+
+    return null;
+}
+
+function inputPortsForPoint(point) {
+    return (point?.devices ?? []).flatMap((device) => (
+        (device.ports ?? [])
+            .filter((port) => port.direction === 'input')
+            .map((port) => ({ port, device }))
+    ));
 }
 function findPortByLabel(point, label) {
     for (const device of point?.devices ?? []) {
@@ -1677,7 +2119,7 @@ function findUpstreamTrunkPort(cables, pointId, pointsById) {
 function appendCableUpstreamSegment(incoming, hops, visited, pointsById, cables) {
     hops.push(buildCableHop(incoming.cable, incoming.core, pointsById));
 
-    let sourceEnd = incoming.start;
+    let sourceEnd = incoming.farEnd;
 
     while (sourceEnd?.connection_type === 'core_end' && sourceEnd.connected_core_end_id) {
         const linked = findCoreEndById(cables, sourceEnd.connected_core_end_id);
@@ -1699,8 +2141,9 @@ function appendCableUpstreamSegment(incoming, hops, visited, pointsById, cables)
 
         hops.push(buildCableHop(linked.cable, linked.core, pointsById));
 
-        incoming = { cable: linked.cable, core: linked.core, start: linked.core.ends?.start, end: linked.core.ends?.end };
-        sourceEnd = incoming.start;
+        const continueSide = coreEndOppositeSide(linked.side);
+        sourceEnd = linked.core.ends?.[continueSide];
+        incoming = { cable: linked.cable, core: linked.core, farEnd: sourceEnd };
     }
 
     return sourceEnd;
@@ -1756,24 +2199,11 @@ function headEndTraceResultIfReached(hops, sourcePoint) {
 }
 
 function pushPointHop(hops, pointId, portId, pointsById) {
-    const point = pointsById[pointId];
-    const port = portFromPoint(point, portId);
-
-    hops.push(buildHop(
-        pointId,
-        port?.label ?? '—',
-        port?.direction ?? 'input',
-        pointsById,
-    ));
+    hops.push(buildHopFromPort(pointId, portId, pointsById));
 }
 
 function pushDeviceEndHop(hops, sourceEnd, pointsById) {
-    hops.push(buildHop(
-        Number(sourceEnd.network_point_id),
-        portLabelFromEnd(sourceEnd, pointsById),
-        sourceEnd.device_port_direction ?? 'output',
-        pointsById,
-    ));
+    hops.push(buildHopFromCoreEnd(sourceEnd, pointsById));
 }
 
 function finishUpstreamTrace(hops, pointsById) {
@@ -1849,6 +2279,81 @@ export function isOltNetworkPoint(point) {
     const name = String(point.name ?? '').toLowerCase();
 
     return isPointType(point, 'router') || name.includes('olt');
+}
+
+export function isOltDevice(device) {
+    if (!device) {
+        return false;
+    }
+
+    const name = String(device.label ?? '').toLowerCase();
+
+    return device.type === 'router' || name.includes('olt');
+}
+
+export function oltDevicesOnPoint(point) {
+    const devices = (point?.devices ?? []).filter(isOltDevice);
+
+    if (devices.length) {
+        return devices;
+    }
+
+    if (isOltNetworkPoint(point)) {
+        return point?.devices ?? [];
+    }
+
+    return [];
+}
+
+function outputPortsWithDevice(point) {
+    return (point?.devices ?? []).flatMap((device) => (
+        (device.ports ?? [])
+            .filter((port) => port.direction === 'output')
+            .map((port) => ({ port, device }))
+    ));
+}
+
+function buildUpstreamPathEntry(pointId, port, device, cables, points, pointsById, typeLabels) {
+    const point = pointsById[pointId];
+    const result = traceSignalUpstreamFromPort(pointId, port.id, cables, points);
+    const flowHops = signalFlowOrder(result.hops);
+    const remotePointHops = flowHops.filter((hop) => (
+        hop.kind === 'point' && hop.pointId !== Number(pointId)
+    ));
+    const destinationHop = remotePointHops.find((hop) => isUplinkHeadEndPoint(pointsById[hop.pointId]))
+        ?? remotePointHops.find((hop) => isFiberHeadEndPoint(pointsById[hop.pointId]))
+        ?? remotePointHops.find((hop) => isNetworkHeadEndPoint(pointsById[hop.pointId]))
+        ?? remotePointHops.find((hop) => isActiveSignalSourcePoint(pointsById[hop.pointId]))
+        ?? remotePointHops[0];
+
+    return {
+        label: upstreamPathLabel(point, device, typeLabels),
+        destinationLabel: destinationHop
+            ? signalPathCardLabel(destinationHop, pointsById, typeLabels)
+            : null,
+        portId: port.id,
+        deviceId: device?.id ?? null,
+        deviceLabel: device?.label ?? null,
+        deviceType: device?.type ?? null,
+        unwired: false,
+        ...result,
+    };
+}
+
+function createUnwiredUpstreamPathEntry(point, device, typeLabels) {
+    return {
+        label: upstreamPathLabel(point, device, typeLabels),
+        destinationLabel: null,
+        portId: null,
+        deviceId: device?.id ?? null,
+        deviceLabel: device?.label ?? null,
+        deviceType: device?.type ?? null,
+        hops: [],
+        receivingSignal: false,
+        originName: null,
+        partialPath: false,
+        unwired: true,
+    };
 }
 
 export function isHeadEndNetworkPoint(point) {
@@ -1992,26 +2497,20 @@ export function positionAlongPath(coords, progress) {
 }
 
 /**
- * Trace signal path upstream from a point (e.g. customer ONT back to control room).
+ * Trace signal upstream starting from a specific input port on a point.
  *
  * @returns {{ hops: Array<object>, receivingSignal: boolean, originName: string|null, partialPath: boolean }}
  */
-export function traceSignalUpstream(pointId, cables, points) {
+export function traceSignalUpstreamFromPort(pointId, startPortId, cables, points) {
     const pointsById = buildPointsById(points);
     const hops = [];
     let currentPointId = Number(pointId);
-    let currentPoint = pointsById[currentPointId];
+    let currentPortId = Number(startPortId);
+    const visited = new Set();
 
-    const firstInput = (currentPoint?.devices ?? [])
-        .flatMap((device) => device.ports ?? [])
-        .find((port) => port.direction === 'input');
-
-    if (!firstInput) {
+    if (! currentPortId) {
         return { hops, receivingSignal: false, originName: null, partialPath: false };
     }
-
-    let currentPortId = firstInput.id;
-    const visited = new Set();
 
     for (let step = 0; step < 48; step += 1) {
         const visitKey = `p:${currentPointId}:${currentPortId}`;
@@ -2104,6 +2603,79 @@ export function traceSignalUpstream(pointId, cables, points) {
     return finishUpstreamTrace(hops, pointsById);
 }
 
+/**
+ * Trace upstream paths from each input port on a point (one path per device input).
+ *
+ * @returns {Array<{ label: string, hops: Array<object>, receivingSignal: boolean, originName: string|null, partialPath: boolean, portId: number|null, deviceLabel: string|null }>}
+ */
+export function traceSignalUpstreamPaths(pointId, cables, points, typeLabels = {}) {
+    const pointsById = buildPointsById(points);
+    const point = pointsById[pointId];
+
+    if (!point) {
+        return [];
+    }
+
+    const paths = inputPortsForPoint(point).map(({ port, device }) => (
+        buildUpstreamPathEntry(pointId, port, device, cables, points, pointsById, typeLabels)
+    ));
+
+    if (isOltNetworkPoint(point)) {
+        oltDevicesOnPoint(point).forEach((device) => {
+            const devicePaths = paths.filter((path) => (
+                path.deviceId != null && String(path.deviceId) === String(device.id)
+            ));
+
+            if (devicePaths.length) {
+                return;
+            }
+
+            const inputPorts = (device.ports ?? []).filter((port) => port.direction === 'input');
+
+            if (inputPorts.length === 0) {
+                paths.push(createUnwiredUpstreamPathEntry(point, device, typeLabels));
+
+                return;
+            }
+
+            inputPorts.forEach((port) => {
+                if (!paths.some((path) => String(path.portId) === String(port.id))) {
+                    paths.push(buildUpstreamPathEntry(
+                        pointId,
+                        port,
+                        device,
+                        cables,
+                        points,
+                        pointsById,
+                        typeLabels,
+                    ));
+                }
+            });
+        });
+    }
+
+    return paths
+        .filter((path) => path.unwired || path.hops.length > 0)
+        .sort(rankUpstreamPath)
+        .slice(0, 24);
+}
+
+/**
+ * Trace signal path upstream from a point (e.g. customer ONT back to control room).
+ * Uses the best result across all input ports when multiple devices exist.
+ *
+ * @returns {{ hops: Array<object>, receivingSignal: boolean, originName: string|null, partialPath: boolean }}
+ */
+export function traceSignalUpstream(pointId, cables, points) {
+    const paths = traceSignalUpstreamPaths(pointId, cables, points);
+
+    if (! paths.length) {
+        return { hops: [], receivingSignal: false, originName: null, partialPath: false };
+    }
+
+    return paths[0];
+}
+
 function isCustomerPoint(point) {
     return isPointType(point, 'customer');
 }
@@ -2153,19 +2725,57 @@ function followForwardThroughSplices(cables, pointsById, currentEnd, currentCabl
     return { end: farEnd, cable: farCable, core: farCore };
 }
 
-function pathLabelFromHops(hops, pointsById) {
-    const names = hops
-        .filter((hop) => hop.kind === 'point')
-        .map((hop) => hop.pointName);
+function pathLabelFromHops(hops, typeLabels = {}, pointsById = {}) {
+    const pointHops = hops.filter((hop) => hop.kind === 'point');
 
-    if (names.length >= 2) {
-        return `${names[0]} → ${names[names.length - 1]}`;
+    if (pointHops.length >= 2) {
+        const start = signalPathCardLabel(pointHops[0], pointsById, typeLabels);
+        const end = signalPathCardLabel(pointHops[pointHops.length - 1], pointsById, typeLabels);
+
+        return `${start} → ${end}`;
     }
 
-    return names[0] ?? 'Path';
+    return pointHops[0]
+        ? signalPathCardLabel(pointHops[0], pointsById, typeLabels)
+        : 'Path';
 }
 
-function extendDownstreamFromPort(cables, pointsById, pointId, port, prefixHops, visited, paths, maxPaths, depth = 0) {
+function upstreamPathLabel(point, device, typeLabels = {}) {
+    return signalPathCardLabel({
+        kind: 'point',
+        pointId: point?.id,
+        pointName: point?.name,
+        pointType: primaryPointType(point),
+        deviceLabel: device?.label ?? null,
+        deviceType: device?.type ?? null,
+    }, { [point?.id]: point }, typeLabels);
+}
+
+function rankUpstreamPath(left, right) {
+    if (left.receivingSignal !== right.receivingSignal) {
+        return Number(right.receivingSignal) - Number(left.receivingSignal);
+    }
+
+    if (left.partialPath !== right.partialPath) {
+        return Number(right.partialPath) - Number(left.partialPath);
+    }
+
+    return right.hops.length - left.hops.length;
+}
+
+function extendDownstreamFromPort(
+    cables,
+    pointsById,
+    pointId,
+    port,
+    prefixHops,
+    visited,
+    paths,
+    maxPaths,
+    typeLabels = {},
+    sourceDevice = null,
+    depth = 0,
+) {
     if (paths.length >= maxPaths || depth > 24) {
         return;
     }
@@ -2185,7 +2795,7 @@ function extendDownstreamFromPort(cables, pointsById, pointId, port, prefixHops,
 
         const hops = [
             ...prefixHops,
-            buildHop(pointId, port.label, port.direction, pointsById),
+            buildHopFromPort(pointId, port.id, pointsById),
             buildCableHop(cable, core, pointsById),
         ];
 
@@ -2193,19 +2803,15 @@ function extendDownstreamFromPort(cables, pointsById, pointId, port, prefixHops,
         const farEnd = chain.end;
 
         if (farEnd?.connection_type === 'device') {
-            hops.push(buildHop(
-                farEnd.network_point_id,
-                portLabelFromEnd(farEnd, pointsById),
-                farEnd.device_port_direction,
-                pointsById,
-            ));
+            hops.push(buildHopFromCoreEnd(farEnd, pointsById));
 
             const endPoint = pointsById[farEnd.network_point_id];
 
             if (isCustomerPoint(endPoint)) {
                 paths.push({
-                    label: pathLabelFromHops(hops, pointsById),
+                    label: pathLabelFromHops(hops, typeLabels, pointsById),
                     hops,
+                    sourceDeviceId: sourceDevice?.id ?? null,
                 });
 
                 return;
@@ -2221,6 +2827,8 @@ function extendDownstreamFromPort(cables, pointsById, pointId, port, prefixHops,
                     visited,
                     paths,
                     maxPaths,
+                    typeLabels,
+                    sourceDevice,
                     depth + 1,
                 );
             });
@@ -2229,8 +2837,9 @@ function extendDownstreamFromPort(cables, pointsById, pointId, port, prefixHops,
         }
 
         paths.push({
-            label: pathLabelFromHops(hops, pointsById),
+            label: pathLabelFromHops(hops, typeLabels, pointsById),
             hops,
+            sourceDeviceId: sourceDevice?.id ?? null,
         });
     });
 }
@@ -2240,7 +2849,7 @@ function extendDownstreamFromPort(cables, pointsById, pointId, port, prefixHops,
  *
  * @returns {Array<{ label: string, hops: Array<object> }>}
  */
-export function traceSignalDownstream(pointId, cables, points) {
+export function traceSignalDownstream(pointId, cables, points, typeLabels = {}) {
     const pointsById = buildPointsById(points);
     const point = pointsById[pointId];
 
@@ -2251,9 +2860,38 @@ export function traceSignalDownstream(pointId, cables, points) {
     const paths = [];
     const visited = new Set();
 
-    outputPortsForPoint(point).forEach((port) => {
-        extendDownstreamFromPort(cables, pointsById, pointId, port, [], visited, paths, 24);
+    outputPortsWithDevice(point).forEach(({ port, device }) => {
+        extendDownstreamFromPort(
+            cables,
+            pointsById,
+            pointId,
+            port,
+            [],
+            visited,
+            paths,
+            24,
+            typeLabels,
+            device,
+        );
     });
+
+    if (isOltNetworkPoint(point)) {
+        oltDevicesOnPoint(point).forEach((device) => {
+            const hasPath = paths.some((path) => String(path.sourceDeviceId) === String(device.id));
+            const outputPorts = (device.ports ?? []).filter((port) => port.direction === 'output');
+
+            if (hasPath || outputPorts.length === 0) {
+                return;
+            }
+
+            paths.push({
+                label: upstreamPathLabel(point, device, typeLabels),
+                hops: [],
+                sourceDeviceId: device.id,
+                unwired: true,
+            });
+        });
+    }
 
     return paths.slice(0, 24);
 }

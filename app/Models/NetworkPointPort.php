@@ -2,12 +2,20 @@
 
 namespace App\Models;
 
+use App\Services\CableCoreConnectionCleanupService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class NetworkPointPort extends Model
 {
+    protected static function booted(): void
+    {
+        static::deleting(function (NetworkPointPort $port): void {
+            app(CableCoreConnectionCleanupService::class)->detachPort((int) $port->id);
+        });
+    }
+
     protected $fillable = [
         'network_point_id',
         'network_point_device_id',

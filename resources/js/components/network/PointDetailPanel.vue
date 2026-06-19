@@ -148,20 +148,55 @@
                     class="space-y-3 pb-2"
                 >
                     <div class="rounded-xl border border-theme bg-theme-background/60 px-3 py-2.5">
-                        <p class="text-sm font-semibold text-theme-heading">
-                            {{ meta.types?.[type] ?? type }}
-                        </p>
-                        <p class="mt-0.5 text-xs text-theme-muted">{{ $t('points.deviceTabHint') }}</p>
+                        <div class="flex items-start justify-between gap-2">
+                            <div>
+                                <p class="text-sm font-semibold text-theme-heading">
+                                    {{ meta.types?.[type] ?? type }}
+                                    <span v-if="devicesForType(type).length > 1" class="font-normal text-theme-muted">
+                                        ({{ devicesForType(type).length }})
+                                    </span>
+                                </p>
+                                <p class="mt-0.5 text-xs text-theme-muted">{{ $t('points.deviceTabHint') }}</p>
+                            </div>
+                            <button
+                                v-if="canEdit"
+                                type="button"
+                                class="btn-accent-outline inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition"
+                                @click="addDevice(type)"
+                            >
+                                <Plus class="h-3.5 w-3.5" />
+                                {{ $t('points.addDevice') }}
+                            </button>
+                        </div>
                     </div>
 
-                    <template v-if="deviceEntryForType(type)">
+                    <article
+                        v-for="(entry, deviceOrdinal) in devicesForType(type)"
+                        :key="entry.device._key"
+                        class="space-y-3 rounded-xl border border-theme bg-theme-background/40 px-3 py-3"
+                    >
+                        <div class="flex items-center justify-between gap-2">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-theme-muted">
+                                {{ $t('points.deviceInstanceLabel', { index: deviceOrdinal + 1 }) }}
+                            </p>
+                            <button
+                                v-if="canEdit && devicesForType(type).length > 1"
+                                type="button"
+                                class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-rose-600 transition hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                                @click="removeDevice(entry.index)"
+                            >
+                                <Trash2 class="h-3.5 w-3.5" />
+                                {{ $t('points.removeDevice') }}
+                            </button>
+                        </div>
+
                         <div>
-                            <label class="app-label mb-1 block text-sm font-medium" :for="`device-label-${type}`">
+                            <label class="app-label mb-1 block text-sm font-medium" :for="`device-label-${entry.device._key}`">
                                 {{ $t('points.fields.deviceLabel') }}
                             </label>
                             <input
-                                :id="`device-label-${type}`"
-                                v-model="deviceEntryForType(type).device.label"
+                                :id="`device-label-${entry.device._key}`"
+                                v-model="entry.device.label"
                                 type="text"
                                 maxlength="255"
                                 class="app-input w-full rounded-xl border px-3.5 py-2 text-sm shadow-sm"
@@ -176,16 +211,16 @@
                                 v-if="canEdit"
                                 type="button"
                                 class="btn-accent-outline inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition"
-                                @click="addPort(deviceEntryForType(type).index)"
+                                @click="addPort(entry.index)"
                             >
                                 <Plus class="h-3.5 w-3.5" />
                                 {{ $t('points.addPort') }}
                             </button>
                         </div>
 
-                        <div v-if="deviceEntryForType(type).device.ports.length" class="space-y-2">
+                        <div v-if="entry.device.ports.length" class="space-y-2">
                             <article
-                                v-for="(port, portIndex) in deviceEntryForType(type).device.ports"
+                                v-for="(port, portIndex) in entry.device.ports"
                                 :key="port._key"
                                 class="grid gap-2 rounded-xl border border-dashed border-theme bg-theme-background px-3 py-2.5 sm:grid-cols-[1fr_1fr_auto]"
                             >
@@ -223,7 +258,7 @@
                                         type="button"
                                         class="rounded p-1.5 text-rose-600 transition hover:bg-rose-50 dark:hover:bg-rose-950/30"
                                         :aria-label="$t('points.removePort')"
-                                        @click="removePort(deviceEntryForType(type).index, portIndex)"
+                                        @click="removePort(entry.index, portIndex)"
                                     >
                                         <Trash2 class="h-4 w-4" />
                                     </button>
@@ -251,7 +286,7 @@
                         <p v-else class="app-dashed-empty rounded-xl border border-dashed px-4 py-5 text-center text-sm">
                             {{ $t('points.noPortsForDevice') }}
                         </p>
-                    </template>
+                    </article>
                 </div>
 
                 <div v-show="activeTab === 'details'" class="space-y-3 pb-2">
@@ -308,9 +343,9 @@
                         <p class="mt-0.5 text-xs text-theme-muted">{{ $t('points.signalPathHint') }}</p>
                     </div>
 
-                    <div v-if="isCustomerPoint" class="rounded-xl border border-theme px-3 py-3">
-                        <div class="mb-2 flex items-center justify-between gap-2">
-                            <div class="flex min-w-0 items-center gap-2">
+                    <div v-if="isCustomerPoint" class="space-y-3">
+                        <div class="rounded-xl border border-theme px-3 py-3">
+                            <div class="mb-2 flex min-w-0 items-center gap-2">
                                 <span
                                     class="inline-flex h-2.5 w-2.5 shrink-0 rounded-full"
                                     :class="signalStatusClass"
@@ -319,144 +354,346 @@
                                     {{ signalStatusLabel }}
                                 </p>
                             </div>
-                            <button
-                                v-if="signalFlowHops.length"
-                                type="button"
-                                class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition"
-                                :class="signalAnimating ? 'btn-secondary border border-theme' : 'btn-primary'"
-                                @click="toggleSignalAnimation"
-                            >
-                                <Radio class="h-3.5 w-3.5" :class="signalAnimating ? 'animate-pulse text-emerald-600' : ''" />
-                                {{ signalAnimating ? $t('points.stopSignalAnimation') : $t('points.animateSignal') }}
-                            </button>
+                            <p v-if="signalUpstreamPaths.length > 1" class="text-xs text-theme-muted">
+                                {{ $t('points.signalIncomingPaths', { count: signalUpstreamPaths.length }) }}
+                            </p>
                         </div>
-                        <p v-if="signalOltHop" class="mb-1 text-xs font-medium text-theme-heading">
-                            {{ $t('points.signalServiceFromOlt', { olt: signalOltHop.pointName, port: signalOltHop.portLabel }) }}
-                        </p>
-                        <p v-if="signalBackhaulOrigin" class="mb-3 text-xs text-theme-muted">
-                            {{ $t('points.signalBackhaulFrom', { origin: signalBackhaulOrigin }) }}
-                        </p>
-                        <p v-else-if="signalUpstream.receivingSignal && signalUpstream.originName && !signalOltHop" class="mb-3 text-xs text-theme-muted">
-                            {{ $t('points.signalFromOrigin', { origin: signalUpstream.originName }) }}
-                        </p>
-                        <p v-else-if="signalUpstream.partialPath" class="mb-3 text-xs text-amber-700 dark:text-amber-300">
-                            {{ $t('points.signalPartialHint') }}
-                        </p>
-                        <ol v-if="signalFlowHops.length" class="relative space-y-2">
-                            <div
-                                v-if="signalAnimating"
-                                class="pointer-events-none absolute bottom-1 left-2.5 top-1 w-px bg-emerald-500/20"
-                                aria-hidden="true"
-                            >
-                                <span
-                                    class="absolute left-1/2 inline-flex -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500 p-0.5 text-white shadow-md ring-2 ring-emerald-500/30 transition-[top] duration-75 ease-linear"
-                                    :style="{ top: `${signalPathProgress * 100}%` }"
-                                >
-                                    <ArrowDown class="h-3 w-3" />
-                                </span>
-                            </div>
-                            <li
-                                v-for="(hop, index) in signalFlowHops"
-                                :key="`up-${index}-${hop.kind}-${hop.pointId ?? hop.cableId ?? hop.label}`"
-                                class="relative flex gap-2 text-xs transition-colors duration-300"
-                                :class="signalHopClass(index)"
-                            >
-                                <span
-                                    v-if="index > 0"
-                                    class="pointer-events-none absolute -top-2 left-2.5 h-2 w-px bg-theme-primary/30"
-                                    aria-hidden="true"
-                                />
-                                <span
-                                    class="relative z-[1] mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-semibold transition-all duration-300"
-                                    :class="signalHopBadgeClass(index)"
-                                >
-                                    <ArrowDown
-                                        v-if="signalAnimating && signalAnimHopIndex === index && index > 0"
-                                        class="h-3 w-3 animate-bounce"
+
+                        <p v-if="!signalUpstreamPaths.length" class="text-xs text-theme-muted">{{ $t('points.noSignalPath') }}</p>
+
+                        <details
+                            v-for="(path, index) in signalUpstreamPaths"
+                            :key="`up-path-${index}-${path.label}`"
+                            class="rounded-xl border border-theme bg-theme-background px-3 py-2"
+                            :class="isPathAnimating('upstream', index) ? 'ring-1 ring-emerald-500/40' : ''"
+                            :open="signalUpstreamPaths.length === 1"
+                        >
+                            <summary class="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-medium text-theme-heading [&::-webkit-details-marker]:hidden">
+                                <span class="flex min-w-0 items-center gap-2 truncate">
+                                    <span
+                                        class="inline-flex h-2 w-2 shrink-0 rounded-full"
+                                        :class="signalPathStatusClass(path)"
                                     />
-                                    <template v-else>{{ index + 1 }}</template>
+                                    <span class="min-w-0 truncate">
+                                        <span class="block truncate">{{ path.label }}</span>
+                                        <span
+                                            v-if="path.destinationLabel"
+                                            class="block truncate text-[11px] font-normal text-theme-muted"
+                                        >
+                                            {{ $t('points.signalPathTo', { destination: path.destinationLabel }) }}
+                                        </span>
+                                    </span>
                                 </span>
-                                <div class="min-w-0">
-                                    <p v-if="hop.kind === 'point'" class="font-medium text-theme-heading">
-                                        {{ hop.pointName }}
-                                        <span class="font-normal text-theme-muted">· {{ hop.portLabel }} ({{ hop.portDirection === 'input' ? $t('cables.portInput') : $t('cables.portOutput') }})</span>
-                                    </p>
-                                    <p v-else-if="hop.kind === 'splice'" class="text-theme-body">
-                                        <span class="font-medium text-theme-heading">{{ hop.pointName }}</span>
-                                        <span class="text-theme-muted"> · {{ $t('points.signalSplice') }} · {{ hop.label }}</span>
-                                    </p>
-                                    <p v-else class="text-theme-body">
-                                        <span class="font-medium">{{ hop.cableName }}</span>
-                                        <span class="text-theme-muted"> · {{ hop.coreCount }}C · Core {{ hop.coreNumber }} · {{ hop.fromPort }} → {{ hop.toPort }}</span>
-                                    </p>
-                                </div>
-                            </li>
-                        </ol>
-                        <p v-else class="text-xs text-theme-muted">{{ $t('points.noSignalPath') }}</p>
+                                <button
+                                    v-if="path.hops?.length && !path.unwired"
+                                    type="button"
+                                    class="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold transition"
+                                    :class="isPathAnimating('upstream', index) ? 'btn-secondary border border-theme' : 'btn-primary'"
+                                    @click.prevent="toggleUpstreamSignalAnimation(index)"
+                                >
+                                    <Radio class="h-3 w-3" :class="isPathAnimating('upstream', index) ? 'animate-pulse text-emerald-600' : ''" />
+                                    {{ isPathAnimating('upstream', index) ? $t('points.stopSignalAnimation') : $t('points.animateSignal') }}
+                                </button>
+                            </summary>
+
+                            <div class="mt-2 space-y-2 border-t border-theme pt-2">
+                                <p v-if="path.unwired" class="text-xs text-theme-muted">
+                                    {{ $t('points.signalNoUplinkConfigured') }}
+                                </p>
+                                <p v-else-if="upstreamServiceSource(path)" class="text-xs font-medium text-theme-heading">
+                                    {{ $t('points.signalServiceFrom', { source: upstreamServiceSource(path) }) }}
+                                </p>
+                                <p v-if="upstreamBackhaulOrigin(path)" class="text-xs text-theme-muted">
+                                    {{ $t('points.signalBackhaulFrom', { origin: upstreamBackhaulOrigin(path) }) }}
+                                </p>
+                                <p v-else-if="path.receivingSignal && path.originName && !upstreamOltHop(path)" class="text-xs text-theme-muted">
+                                    {{ $t('points.signalFromOrigin', { origin: path.originName }) }}
+                                </p>
+                                <p v-else-if="path.partialPath" class="text-xs text-amber-700 dark:text-amber-300">
+                                    {{ $t('points.signalPartialHint') }}
+                                </p>
+
+                                <ol v-if="upstreamFlowHops(path).length" class="relative space-y-2">
+                                    <div
+                                        v-if="isPathAnimating('upstream', index)"
+                                        class="pointer-events-none absolute bottom-1 left-2.5 top-1 w-px bg-emerald-500/20"
+                                        aria-hidden="true"
+                                    >
+                                        <span
+                                            class="absolute left-1/2 inline-flex -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500 p-0.5 text-white shadow-md ring-2 ring-emerald-500/30 transition-[top] duration-75 ease-linear"
+                                            :style="{ top: `${signalPathProgress * 100}%` }"
+                                        >
+                                            <ArrowDown class="h-3 w-3" />
+                                        </span>
+                                    </div>
+                                    <li
+                                        v-for="(hop, hopIndex) in upstreamFlowHops(path)"
+                                        :key="`up-${index}-${hopIndex}-${hop.kind}-${hop.pointId ?? hop.cableId ?? hop.label}`"
+                                        class="relative flex gap-2 text-xs transition-colors duration-300"
+                                        :class="animatedHopClass(hopIndex, index, 'upstream')"
+                                    >
+                                        <span
+                                            v-if="hopIndex > 0"
+                                            class="pointer-events-none absolute -top-2 left-2.5 h-2 w-px bg-theme-primary/30"
+                                            aria-hidden="true"
+                                        />
+                                        <span
+                                            class="relative z-[1] mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold transition-all duration-300"
+                                            :class="animatedHopBadgeClass(hopIndex, index, 'upstream')"
+                                        >
+                                            <ArrowDown
+                                                v-if="isPathAnimating('upstream', index) && signalAnimHopIndex === hopIndex && hopIndex > 0"
+                                                class="h-3 w-3 animate-bounce"
+                                            />
+                                            <template v-else>{{ hopIndex + 1 }}</template>
+                                        </span>
+                                        <div class="min-w-0 text-theme-body">
+                                            <p v-if="hop.kind === 'point'" class="font-medium text-theme-heading">
+                                                {{ formatSignalHop(hop) }}
+                                            </p>
+                                            <p v-else-if="hop.kind === 'splice'">
+                                                <span class="font-medium text-theme-heading">{{ hop.pointName }}</span>
+                                                <span class="text-theme-muted"> · {{ $t('points.signalSplice') }} · {{ hop.label }}</span>
+                                            </p>
+                                            <p v-else>
+                                                <span class="font-medium">{{ hop.cableName }}</span>
+                                                <span class="text-theme-muted"> · {{ hop.coreCount }}C · Core {{ hop.coreNumber }} · {{ hop.fromPort }} → {{ hop.toPort }}</span>
+                                            </p>
+                                        </div>
+                                    </li>
+                                </ol>
+                            </div>
+                        </details>
                     </div>
 
-                    <div v-if="isOltPoint" class="rounded-xl border border-theme px-3 py-3">
-                        <p class="mb-2 text-sm font-medium text-theme-heading">{{ $t('points.signalIncomingBackhaul') }}</p>
-                        <p v-if="signalUpstream.receivingSignal && signalUpstream.originName" class="mb-3 text-xs text-theme-muted">
-                            {{ $t('points.signalFedBy', { origin: signalUpstream.originName }) }}
+                    <div v-if="isOltPoint" class="space-y-3">
+                        <p class="text-sm font-medium text-theme-heading">{{ $t('points.signalIncomingBackhaul') }}</p>
+                        <p v-if="signalUpstreamPaths.length > 1" class="text-xs text-theme-muted">
+                            {{ $t('points.signalBackhaulPaths', { count: signalUpstreamPaths.length }) }}
                         </p>
-                        <p v-else-if="signalUpstream.partialPath" class="mb-3 text-xs text-amber-700 dark:text-amber-300">
-                            {{ $t('points.signalPartialHint') }}
-                        </p>
-                        <ol v-if="signalFlowHops.length" class="space-y-2">
-                            <li
-                                v-for="(hop, index) in signalIncomingFlowHops"
-                                :key="`in-${index}-${hop.kind}-${hop.pointId ?? hop.cableId ?? hop.label}`"
-                                class="flex gap-2 text-xs text-theme-body"
+                        <p v-if="!signalUpstreamPaths.length" class="text-xs text-theme-muted">{{ $t('points.noSignalPath') }}</p>
+                        <details
+                            v-for="(path, index) in signalUpstreamPaths"
+                            :key="`olt-in-${index}-${path.label}`"
+                            class="rounded-xl border border-theme bg-theme-background px-3 py-2"
+                            :open="signalUpstreamPaths.length === 1"
+                        >
+                            <summary class="cursor-pointer list-none text-xs font-medium text-theme-heading [&::-webkit-details-marker]:hidden">
+                                <span class="flex min-w-0 items-center gap-2">
+                                    <span
+                                        class="inline-flex h-2 w-2 shrink-0 rounded-full"
+                                        :class="signalPathStatusClass(path)"
+                                    />
+                                    <span class="min-w-0 truncate">
+                                        <span class="block truncate">{{ path.label }}</span>
+                                        <span
+                                            v-if="path.destinationLabel"
+                                            class="block truncate text-[11px] font-normal text-theme-muted"
+                                        >
+                                            {{ $t('points.signalPathTo', { destination: path.destinationLabel }) }}
+                                        </span>
+                                    </span>
+                                </span>
+                            </summary>
+                            <div class="mt-2 space-y-2 border-t border-theme pt-2">
+                                <p v-if="path.unwired" class="text-xs text-theme-muted">
+                                    {{ $t('points.signalNoUplinkConfigured') }}
+                                </p>
+                                <p v-else-if="path.receivingSignal && (path.destinationLabel || path.originName)" class="text-xs text-theme-muted">
+                                    {{ $t('points.signalFedBy', { origin: path.destinationLabel ?? path.originName }) }}
+                                </p>
+                                <p v-else-if="path.partialPath" class="text-xs text-amber-700 dark:text-amber-300">
+                                    {{ $t('points.signalPartialHint') }}
+                                </p>
+                                <ol v-if="upstreamFlowHops(path).length" class="space-y-2">
+                                    <li
+                                        v-for="(hop, hopIndex) in upstreamFlowHops(path)"
+                                        :key="`olt-in-hop-${index}-${hopIndex}`"
+                                        class="flex gap-2 text-xs text-theme-body"
+                                    >
+                                        <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-theme-primary/10 text-[11px] font-semibold text-theme-primary">
+                                            {{ hopIndex + 1 }}
+                                        </span>
+                                        <div class="min-w-0">
+                                            <template v-if="hop.kind === 'point'">
+                                                {{ formatSignalHop(hop) }}
+                                            </template>
+                                            <template v-else-if="hop.kind === 'splice'">
+                                                <span class="font-medium text-theme-heading">{{ hop.pointName }}</span>
+                                                <span class="text-theme-muted"> · {{ $t('points.signalSplice') }}</span>
+                                            </template>
+                                            <template v-else>
+                                                <span class="font-medium">{{ hop.cableName }}</span>
+                                                <span class="text-theme-muted"> · {{ hop.fromPort }} → {{ hop.toPort }}</span>
+                                            </template>
+                                        </div>
+                                    </li>
+                                </ol>
+                            </div>
+                        </details>
+                    </div>
+
+                    <div v-if="isOltPoint" class="space-y-4">
+                        <p class="text-sm font-medium text-theme-heading">{{ $t('points.signalOutgoingPon') }}</p>
+                        <p v-if="!oltDownstreamGroups.length" class="text-xs text-theme-muted">{{ $t('points.noDownstreamSignals') }}</p>
+                        <section
+                            v-for="group in oltDownstreamGroups"
+                            :key="`olt-out-${group.device.id ?? group.deviceLabel}`"
+                            class="space-y-2"
+                        >
+                            <p class="text-xs font-semibold text-theme-heading">{{ group.deviceLabel }}</p>
+                            <p v-if="!group.items.length" class="text-xs text-theme-muted">
+                                {{ $t('points.noDownstreamFromDevice') }}
+                            </p>
+                            <details
+                                v-for="{ path, index } in group.items"
+                                :key="`down-${index}-${path.label}`"
+                                class="rounded-xl border border-theme bg-theme-background px-3 py-2"
+                                :class="isPathAnimating('downstream', index) ? 'ring-1 ring-emerald-500/40' : ''"
                             >
-                                <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-theme-primary/10 text-[11px] font-semibold text-theme-primary">
-                                    {{ index + 1 }}
-                                </span>
-                                <div class="min-w-0">
-                                    <template v-if="hop.kind === 'point'">
-                                        <span class="font-medium text-theme-heading">{{ hop.pointName }}</span>
-                                        <span class="text-theme-muted"> · {{ hop.portLabel }} ({{ hop.portDirection === 'input' ? $t('cables.portInput') : $t('cables.portOutput') }})</span>
-                                    </template>
-                                    <template v-else-if="hop.kind === 'splice'">
-                                        <span class="font-medium text-theme-heading">{{ hop.pointName }}</span>
-                                        <span class="text-theme-muted"> · {{ $t('points.signalSplice') }}</span>
-                                    </template>
-                                    <template v-else>
-                                        <span class="font-medium">{{ hop.cableName }}</span>
-                                        <span class="text-theme-muted"> · {{ hop.fromPort }} → {{ hop.toPort }}</span>
-                                    </template>
-                                </div>
-                            </li>
-                        </ol>
-                        <p v-else class="text-xs text-theme-muted">{{ $t('points.noSignalPath') }}</p>
+                                <summary class="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-medium text-theme-heading [&::-webkit-details-marker]:hidden">
+                                    <span class="min-w-0 truncate">{{ path.label }}</span>
+                                    <button
+                                        v-if="path.hops?.length && !path.unwired"
+                                        type="button"
+                                        class="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold transition"
+                                        :class="isPathAnimating('downstream', index) ? 'btn-secondary border border-theme' : 'btn-primary'"
+                                        @click.prevent="toggleDownstreamSignalAnimation(index)"
+                                    >
+                                        <Radio class="h-3 w-3" :class="isPathAnimating('downstream', index) ? 'animate-pulse text-emerald-600' : ''" />
+                                        {{ isPathAnimating('downstream', index) ? $t('points.stopSignalAnimation') : $t('points.animateSignal') }}
+                                    </button>
+                                </summary>
+                                <p v-if="path.unwired" class="mt-2 border-t border-theme pt-2 text-xs text-theme-muted">
+                                    {{ $t('points.signalNoPonConfigured') }}
+                                </p>
+                                <ol
+                                    v-else
+                                    class="relative mt-2 space-y-2 border-t border-theme pt-2"
+                                >
+                                    <div
+                                        v-if="isPathAnimating('downstream', index)"
+                                        class="pointer-events-none absolute bottom-1 left-2.5 top-1 w-px bg-emerald-500/20"
+                                        aria-hidden="true"
+                                    >
+                                        <span
+                                            class="absolute left-1/2 inline-flex -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500 p-0.5 text-white shadow-md ring-2 ring-emerald-500/30 transition-[top] duration-75 ease-linear"
+                                            :style="{ top: `${signalPathProgress * 100}%` }"
+                                        >
+                                            <ArrowDown class="h-3 w-3" />
+                                        </span>
+                                    </div>
+                                    <li
+                                        v-for="(hop, hopIndex) in path.hops"
+                                        :key="`down-hop-${index}-${hopIndex}`"
+                                        class="relative flex gap-2 text-xs transition-colors duration-300"
+                                        :class="animatedHopClass(hopIndex, index, 'downstream')"
+                                    >
+                                        <span
+                                            v-if="hopIndex > 0"
+                                            class="pointer-events-none absolute -top-2 left-2.5 h-2 w-px bg-theme-primary/30"
+                                            aria-hidden="true"
+                                        />
+                                        <span
+                                            class="relative z-[1] mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold transition-all duration-300"
+                                            :class="animatedHopBadgeClass(hopIndex, index, 'downstream')"
+                                        >
+                                            <ArrowDown
+                                                v-if="isPathAnimating('downstream', index) && signalAnimHopIndex === hopIndex && hopIndex > 0"
+                                                class="h-3 w-3 animate-bounce"
+                                            />
+                                            <template v-else>{{ hopIndex + 1 }}</template>
+                                        </span>
+                                        <div class="min-w-0 text-theme-body">
+                                            <template v-if="hop.kind === 'point'">
+                                                {{ formatSignalHop(hop) }}
+                                            </template>
+                                            <template v-else-if="hop.kind === 'splice'">
+                                                <span class="font-medium text-theme-heading">{{ hop.pointName }}</span>
+                                                <span class="text-theme-muted"> · {{ $t('points.signalSplice') }} · {{ hop.label }}</span>
+                                            </template>
+                                            <template v-else>
+                                                <span class="font-medium">{{ hop.cableName }}</span>
+                                                <span class="text-theme-muted"> · {{ hop.coreCount }}C · Core {{ hop.coreNumber }} · {{ hop.fromPort }} → {{ hop.toPort }}</span>
+                                            </template>
+                                        </div>
+                                    </li>
+                                </ol>
+                            </details>
+                        </section>
                     </div>
 
-                    <div v-if="isHeadEndPoint || isOltPoint" class="space-y-3">
-                        <p class="text-sm font-medium text-theme-heading">
-                            {{ isOltPoint ? $t('points.signalOutgoingPon') : $t('points.downstreamSignals') }}
-                        </p>
+                    <div v-else-if="isHeadEndPoint" class="space-y-3">
+                        <p class="text-sm font-medium text-theme-heading">{{ $t('points.downstreamSignals') }}</p>
                         <p v-if="!signalDownstream.length" class="text-xs text-theme-muted">{{ $t('points.noDownstreamSignals') }}</p>
                         <details
                             v-for="(path, index) in signalDownstream"
                             :key="`down-${index}-${path.label}`"
                             class="rounded-xl border border-theme bg-theme-background px-3 py-2"
+                            :class="isPathAnimating('downstream', index) ? 'ring-1 ring-emerald-500/40' : ''"
                         >
-                            <summary class="cursor-pointer text-xs font-medium text-theme-heading">{{ path.label }}</summary>
-                            <ol class="mt-2 space-y-2 border-t border-theme pt-2">
+                            <summary class="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-medium text-theme-heading [&::-webkit-details-marker]:hidden">
+                                <span class="min-w-0 truncate">{{ path.label }}</span>
+                                <button
+                                    v-if="path.hops?.length"
+                                    type="button"
+                                    class="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold transition"
+                                    :class="isPathAnimating('downstream', index) ? 'btn-secondary border border-theme' : 'btn-primary'"
+                                    @click.prevent="toggleDownstreamSignalAnimation(index)"
+                                >
+                                    <Radio class="h-3 w-3" :class="isPathAnimating('downstream', index) ? 'animate-pulse text-emerald-600' : ''" />
+                                    {{ isPathAnimating('downstream', index) ? $t('points.stopSignalAnimation') : $t('points.animateSignal') }}
+                                </button>
+                            </summary>
+                            <ol
+                                class="relative mt-2 space-y-2 border-t border-theme pt-2"
+                            >
+                                <div
+                                    v-if="isPathAnimating('downstream', index)"
+                                    class="pointer-events-none absolute bottom-1 left-2.5 top-1 w-px bg-emerald-500/20"
+                                    aria-hidden="true"
+                                >
+                                    <span
+                                        class="absolute left-1/2 inline-flex -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500 p-0.5 text-white shadow-md ring-2 ring-emerald-500/30 transition-[top] duration-75 ease-linear"
+                                        :style="{ top: `${signalPathProgress * 100}%` }"
+                                    >
+                                        <ArrowDown class="h-3 w-3" />
+                                    </span>
+                                </div>
                                 <li
                                     v-for="(hop, hopIndex) in path.hops"
                                     :key="`down-hop-${index}-${hopIndex}`"
-                                    class="text-xs text-theme-body"
+                                    class="relative flex gap-2 text-xs transition-colors duration-300"
+                                    :class="animatedHopClass(hopIndex, index, 'downstream')"
                                 >
-                                    <template v-if="hop.kind === 'point'">
-                                        {{ hop.pointName }} · {{ hop.portLabel }} ({{ hop.portDirection === 'input' ? $t('cables.portInput') : $t('cables.portOutput') }})
-                                    </template>
-                                    <template v-else-if="hop.kind === 'splice'">
-                                        {{ hop.pointName }} · {{ $t('points.signalSplice') }} · {{ hop.label }}
-                                    </template>
-                                    <template v-else>
-                                        {{ hop.cableName }} · {{ hop.coreCount }}C · Core {{ hop.coreNumber }} · {{ hop.fromPort }} → {{ hop.toPort }}
-                                    </template>
+                                    <span
+                                        v-if="hopIndex > 0"
+                                        class="pointer-events-none absolute -top-2 left-2.5 h-2 w-px bg-theme-primary/30"
+                                        aria-hidden="true"
+                                    />
+                                    <span
+                                        class="relative z-[1] mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold transition-all duration-300"
+                                        :class="animatedHopBadgeClass(hopIndex, index, 'downstream')"
+                                    >
+                                        <ArrowDown
+                                            v-if="isPathAnimating('downstream', index) && signalAnimHopIndex === hopIndex && hopIndex > 0"
+                                            class="h-3 w-3 animate-bounce"
+                                        />
+                                        <template v-else>{{ hopIndex + 1 }}</template>
+                                    </span>
+                                    <div class="min-w-0 text-theme-body">
+                                        <template v-if="hop.kind === 'point'">
+                                            {{ formatSignalHop(hop) }}
+                                        </template>
+                                        <template v-else-if="hop.kind === 'splice'">
+                                            <span class="font-medium text-theme-heading">{{ hop.pointName }}</span>
+                                            <span class="text-theme-muted"> · {{ $t('points.signalSplice') }} · {{ hop.label }}</span>
+                                        </template>
+                                        <template v-else>
+                                            <span class="font-medium">{{ hop.cableName }}</span>
+                                            <span class="text-theme-muted"> · {{ hop.coreCount }}C · Core {{ hop.coreNumber }} · {{ hop.fromPort }} → {{ hop.toPort }}</span>
+                                        </template>
+                                    </div>
                                 </li>
                             </ol>
                         </details>
@@ -553,13 +790,14 @@ import {
     findPortConnection,
     findPortConnections,
     formatPortCableConnection,
+    formatSignalPointHop,
     normalizePointTypes,
     oltHopFromFlowHops,
+    oltDevicesOnPoint,
     pointColor,
     signalFlowOrder,
-    traceMetaFromHops,
     traceSignalDownstream,
-    traceSignalUpstream,
+    traceSignalUpstreamPaths,
     isHeadEndNetworkPoint,
     isOltNetworkPoint,
 } from '../../utils/networkMap';
@@ -633,17 +871,7 @@ function devicesFromPoint(point, typeLabels = {}) {
         ? point.devices.map((device) => createDeviceRow(device))
         : [];
 
-    const seenTypes = new Set();
-
-    devices = devices.filter((device) => {
-        if (!types.includes(device.type) || seenTypes.has(device.type)) {
-            return false;
-        }
-
-        seenTypes.add(device.type);
-
-        return true;
-    });
+    devices = devices.filter((device) => types.includes(device.type));
 
     types.forEach((type) => {
         if (!devices.some((device) => device.type === type)) {
@@ -659,6 +887,16 @@ function devicesFromPoint(point, typeLabels = {}) {
 
 function deviceTabId(type) {
     return `device:${type}`;
+}
+
+function devicesForType(type) {
+    return form.devices
+        .map((device, index) => ({ device, index }))
+        .filter(({ device }) => device.type === type);
+}
+
+function deviceCountForType(type) {
+    return devicesForType(type).length;
 }
 
 function syncDevicesWithTypes() {
@@ -678,31 +916,20 @@ function syncDevicesWithTypes() {
             }, true));
         }
     });
-
-    const seenTypes = new Set();
-
-    for (let index = form.devices.length - 1; index >= 0; index -= 1) {
-        const { type } = form.devices[index];
-
-        if (seenTypes.has(type)) {
-            form.devices.splice(index, 1);
-        } else {
-            seenTypes.add(type);
-        }
-    }
 }
 
-function deviceEntryForType(type) {
-    const index = form.devices.findIndex((device) => device.type === type);
+function addDevice(type) {
+    const typeLabel = props.meta.types?.[type] ?? type;
+    const count = deviceCountForType(type) + 1;
 
-    if (index === -1) {
-        return null;
-    }
+    form.devices.push(createDeviceRow({
+        type,
+        label: count > 1 ? `${typeLabel} ${count}` : typeLabel,
+    }, true));
+}
 
-    return {
-        device: form.devices[index],
-        index,
-    };
+function removeDevice(deviceIndex) {
+    form.devices.splice(deviceIndex, 1);
 }
 
 function firstDeviceTabId() {
@@ -740,11 +967,14 @@ const visibleTabs = computed(() => {
     ];
 
     (form.types.length ? form.types : ['junction']).forEach((type) => {
+        const count = deviceCountForType(type);
+        const typeLabel = props.meta.types?.[type] ?? type;
+
         tabs.push({
             id: deviceTabId(type),
             type,
-            label: props.meta.types?.[type] ?? type,
-            shortLabel: props.meta.types?.[type] ?? type,
+            label: count > 1 ? `${typeLabel} (${count})` : typeLabel,
+            shortLabel: count > 1 ? `${typeLabel} (${count})` : typeLabel,
             icon: MapPin,
         });
     });
@@ -780,60 +1010,39 @@ const isOltPoint = computed(() => isOltNetworkPoint(props.point));
 
 const isHeadEndPoint = computed(() => isHeadEndNetworkPoint(props.point));
 
-const signalUpstream = computed(() => {
+const signalTypeLabels = computed(() => props.meta?.types ?? {});
+
+const pointsForSignalTrace = computed(() => {
     if (!props.point?.id) {
-        return { hops: [], receivingSignal: false, originName: null, partialPath: false };
+        return props.points;
     }
 
-    return traceSignalUpstream(props.point.id, props.cables, props.points);
+    return props.points.map((item) => (
+        String(item.id) === String(props.point.id)
+            ? { ...item, ...props.point, devices: props.point.devices ?? item.devices }
+            : item
+    ));
 });
 
-const signalFlowHops = computed(() => signalFlowOrder(signalUpstream.value.hops));
-
-const signalOltHop = computed(() => {
-    if (!isCustomerPoint.value) {
-        return null;
-    }
-
-    return oltHopFromFlowHops(signalFlowHops.value, props.points);
-});
-
-const signalBackhaulOrigin = computed(() => {
-    if (!signalUpstream.value.receivingSignal || !signalUpstream.value.originName) {
-        return null;
-    }
-
-    const oltName = signalOltHop.value?.pointName;
-
-    if (oltName && signalUpstream.value.originName === oltName) {
-        return null;
-    }
-
-    return signalUpstream.value.originName;
-});
-
-/** Backhaul hops only: origin → OLT (stops before PON distribution). */
-const signalIncomingFlowHops = computed(() => {
-    if (!isOltPoint.value) {
+const signalUpstreamPaths = computed(() => {
+    if (!props.point?.id) {
         return [];
     }
 
-    const hops = signalFlowHops.value;
-    const oltIndex = hops.findIndex((hop) => Number(hop.pointId) === Number(props.point?.id));
-
-    if (oltIndex >= 0) {
-        return hops.slice(0, oltIndex + 1);
-    }
-
-    return hops;
+    return traceSignalUpstreamPaths(
+        props.point.id,
+        props.cables,
+        pointsForSignalTrace.value,
+        signalTypeLabels.value,
+    );
 });
 
 const signalStatusLabel = computed(() => {
-    if (signalUpstream.value.receivingSignal) {
+    if (signalUpstreamPaths.value.some((path) => path.receivingSignal)) {
         return t('points.signalReceiving');
     }
 
-    if (signalUpstream.value.partialPath) {
+    if (signalUpstreamPaths.value.some((path) => path.partialPath)) {
         return t('points.signalPartial');
     }
 
@@ -841,47 +1050,100 @@ const signalStatusLabel = computed(() => {
 });
 
 const signalStatusClass = computed(() => {
-    if (signalUpstream.value.receivingSignal) {
+    if (signalUpstreamPaths.value.some((path) => path.receivingSignal)) {
         return 'bg-emerald-500';
     }
 
-    if (signalUpstream.value.partialPath) {
+    if (signalUpstreamPaths.value.some((path) => path.partialPath)) {
         return 'bg-amber-500';
     }
 
     return 'bg-rose-500';
 });
 
+function formatSignalHop(hop) {
+    return formatSignalPointHop(hop, signalTypeLabels.value, t);
+}
+
+function upstreamServiceSource(path) {
+    const hop = upstreamOltHop(path);
+
+    return hop ? formatSignalHop(hop) : null;
+}
+
+function upstreamFlowHops(path) {
+    return path?.hops?.length ? signalFlowOrder(path.hops) : [];
+}
+
+function upstreamOltHop(path) {
+    return oltHopFromFlowHops(upstreamFlowHops(path), props.points);
+}
+
+function upstreamBackhaulOrigin(path) {
+    if (!path?.receivingSignal || !path.originName) {
+        return null;
+    }
+
+    const oltName = upstreamOltHop(path)?.pointName;
+
+    if (oltName && path.originName === oltName) {
+        return null;
+    }
+
+    return path.originName;
+}
+
+function signalPathStatusClass(path) {
+    if (path.receivingSignal) {
+        return 'bg-emerald-500';
+    }
+
+    if (path.partialPath) {
+        return 'bg-amber-500';
+    }
+
+    return 'bg-rose-500';
+}
+
 const signalAnimating = ref(false);
 const signalAnimHopIndex = ref(-1);
 const signalPathProgress = ref(0);
+const signalAnimHops = ref([]);
+const signalAnimatingScope = ref(null);
+const signalAnimatingPathIndex = ref(-1);
 let signalAnimFrame = null;
 let signalAnimStartTime = null;
 
 const SIGNAL_ANIM_LOOP_MS = 5000;
 
-function signalHopClass(index) {
-    if (!signalAnimating.value || signalAnimHopIndex.value < 0) {
+function isPathAnimating(scope, pathIndex) {
+    return signalAnimating.value
+        && signalAnimatingScope.value === scope
+        && signalAnimatingPathIndex.value === pathIndex;
+}
+
+function animatedHopClass(hopIndex, pathIndex, scope) {
+    if (!isPathAnimating(scope, pathIndex) || signalAnimHopIndex.value < 0) {
         return '';
     }
 
-    if (index === signalAnimHopIndex.value) {
+    if (hopIndex === signalAnimHopIndex.value) {
         return 'rounded-lg bg-theme-primary/10 px-1 py-1 -mx-1';
     }
 
-    if (index < signalAnimHopIndex.value) {
+    if (hopIndex < signalAnimHopIndex.value) {
         return 'opacity-80';
     }
 
     return 'opacity-45';
 }
 
-function signalHopBadgeClass(index) {
-    if (signalAnimating.value && index === signalAnimHopIndex.value) {
+function animatedHopBadgeClass(hopIndex, pathIndex, scope) {
+    if (isPathAnimating(scope, pathIndex) && hopIndex === signalAnimHopIndex.value) {
         return 'bg-theme-primary text-white shadow-sm ring-2 ring-theme-primary/30';
     }
 
-    if (signalAnimating.value && index < signalAnimHopIndex.value) {
+    if (isPathAnimating(scope, pathIndex) && hopIndex < signalAnimHopIndex.value) {
         return 'bg-emerald-500/15 text-emerald-700';
     }
 
@@ -892,6 +1154,9 @@ function stopSignalAnimation() {
     signalAnimating.value = false;
     signalAnimHopIndex.value = -1;
     signalPathProgress.value = 0;
+    signalAnimHops.value = [];
+    signalAnimatingScope.value = null;
+    signalAnimatingPathIndex.value = -1;
     signalAnimStartTime = null;
 
     if (signalAnimFrame) {
@@ -902,15 +1167,21 @@ function stopSignalAnimation() {
     emit('signal-animate', null);
 }
 
-function emitSignalAnimateFrame(activeHopIndex, pathProgress) {
-    const meta = traceMetaFromHops(signalUpstream.value.hops);
+function buildSignalAnimatePayload(activeHopIndex, pathProgress) {
+    const flowHops = [...(signalAnimHops.value ?? [])];
 
-    emit('signal-animate', {
-        ...meta,
+    return {
+        flowHops,
+        cableIds: flowHops.filter((hop) => hop.kind === 'cable').map((hop) => hop.cableId),
+        pointIds: flowHops.filter((hop) => hop.kind === 'point').map((hop) => hop.pointId),
         active: true,
         activeHopIndex,
         pathProgress,
-    });
+    };
+}
+
+function emitSignalAnimateFrame(activeHopIndex, pathProgress) {
+    emit('signal-animate', buildSignalAnimatePayload(activeHopIndex, pathProgress));
 }
 
 function tickSignalAnimation(timestamp) {
@@ -924,7 +1195,7 @@ function tickSignalAnimation(timestamp) {
 
     const elapsed = (timestamp - signalAnimStartTime) % SIGNAL_ANIM_LOOP_MS;
     const pathProgress = elapsed / SIGNAL_ANIM_LOOP_MS;
-    const hops = signalFlowHops.value;
+    const hops = signalAnimHops.value;
     const hopIndex = hops.length
         ? Math.min(hops.length - 1, Math.floor(pathProgress * hops.length))
         : 0;
@@ -935,13 +1206,16 @@ function tickSignalAnimation(timestamp) {
     signalAnimFrame = requestAnimationFrame(tickSignalAnimation);
 }
 
-function startSignalAnimation() {
-    const hops = signalFlowHops.value;
-
-    if (!hops.length || signalAnimating.value) {
+function startSignalAnimationForHops(hops, scope, pathIndex) {
+    if (!hops.length) {
         return;
     }
 
+    stopSignalAnimation();
+
+    signalAnimHops.value = hops;
+    signalAnimatingScope.value = scope;
+    signalAnimatingPathIndex.value = pathIndex;
     signalAnimating.value = true;
     signalAnimHopIndex.value = 0;
     signalPathProgress.value = 0;
@@ -950,14 +1224,36 @@ function startSignalAnimation() {
     signalAnimFrame = requestAnimationFrame(tickSignalAnimation);
 }
 
-function toggleSignalAnimation() {
-    if (signalAnimating.value) {
+function toggleUpstreamSignalAnimation(pathIndex) {
+    if (isPathAnimating('upstream', pathIndex)) {
         stopSignalAnimation();
 
         return;
     }
 
-    startSignalAnimation();
+    const path = signalUpstreamPaths.value[pathIndex];
+
+    if (!path) {
+        return;
+    }
+
+    startSignalAnimationForHops(upstreamFlowHops(path), 'upstream', pathIndex);
+}
+
+function toggleDownstreamSignalAnimation(pathIndex) {
+    if (isPathAnimating('downstream', pathIndex)) {
+        stopSignalAnimation();
+
+        return;
+    }
+
+    const path = signalDownstream.value[pathIndex];
+
+    if (!path?.hops?.length) {
+        return;
+    }
+
+    startSignalAnimationForHops(path.hops, 'downstream', pathIndex);
 }
 
 onBeforeUnmount(() => {
@@ -973,7 +1269,36 @@ const signalDownstream = computed(() => {
         return [];
     }
 
-    return traceSignalDownstream(props.point.id, props.cables, props.points);
+    return traceSignalDownstream(
+        props.point.id,
+        props.cables,
+        pointsForSignalTrace.value,
+        signalTypeLabels.value,
+    );
+});
+
+function oltDeviceCardLabel(device) {
+    const type = signalTypeLabels.value[device?.type] ?? device?.type;
+
+    if (device?.label?.trim() && type) {
+        return `${device.label.trim()} (${type})`;
+    }
+
+    return device?.label?.trim() || type || 'OLT';
+}
+
+const oltDownstreamGroups = computed(() => {
+    if (!isOltPoint.value || !props.point?.id) {
+        return [];
+    }
+
+    return oltDevicesOnPoint(props.point).map((device) => ({
+        device,
+        deviceLabel: oltDeviceCardLabel(device),
+        items: signalDownstream.value
+            .map((path, index) => ({ path, index }))
+            .filter(({ path }) => String(path.sourceDeviceId) === String(device.id)),
+    }));
 });
 
 function portConnection(port) {

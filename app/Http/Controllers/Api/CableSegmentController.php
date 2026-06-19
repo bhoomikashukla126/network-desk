@@ -9,6 +9,7 @@ use App\Models\CableImage;
 use App\Models\CableSegment;
 use App\Models\NetworkPoint;
 use App\Services\ActivityLogService;
+use App\Services\CableCoreConnectionCleanupService;
 use App\Services\CableCoreSyncService;
 use App\Services\CableSplitJoinService;
 use App\Support\CableRoute;
@@ -33,6 +34,8 @@ class CableSegmentController extends Controller
     public function index(Request $request): JsonResponse
     {
         $workspaceId = WorkspaceSession::id($request);
+
+        app(CableCoreConnectionCleanupService::class)->repairOrphanedConnections($workspaceId);
 
         $cables = CableSegment::query()
             ->with([

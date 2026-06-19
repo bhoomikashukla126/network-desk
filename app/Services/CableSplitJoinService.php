@@ -127,7 +127,7 @@ class CableSplitJoinService
     }
 
     /**
-     * @return list<array{id: int, name: string, cable_type: string, junction_point_id: int, junction_point_name: string|null, label: string}>
+     * @return list<array{id: int, name: string, cable_type: string, core_count: int|null, junction_point_id: int, junction_point_name: string|null, available_cores_at_junction: int, label: string}>
      */
     public function joinCandidates(string $workspaceId, CableSegment $cable): array
     {
@@ -136,7 +136,7 @@ class CableSplitJoinService
         $endpointIds = [$pointIds[0], $pointIds[array_key_last($pointIds)]];
 
         return CableSegment::query()
-            ->with(['fromPoint:id,name', 'toPoint:id,name'])
+            ->with(['fromPoint:id,name', 'toPoint:id,name', 'cores.ends'])
             ->where('workspace_id', $workspaceId)
             ->where('id', '!=', $cable->id)
             ->orderBy('name')
@@ -152,7 +152,7 @@ class CableSplitJoinService
 
                 return count(array_intersect($endpointIds, $otherEndpoints)) > 0;
             })
-            ->map(function (CableSegment $other) use ($route) {
+            ->map(function (CableSegment $other) use ($route, $cable) {
                 try {
                     $oriented = CableRoute::orientForJoin($route, CableRoute::normalize($other->route, $other));
                 } catch (\Throwable) {
@@ -161,19 +161,56 @@ class CableSplitJoinService
 
                 $junctionId = $oriented['junction_point_id'];
                 $junction = NetworkPoint::query()->find($junctionId);
+                $availableOnOther = $this->countAvailableCoreEndsAtPoint($other, $junctionId);
+
+                $name = $other->name ?? ('Cable #'.$other->id);
+                $junctionLabel = $junction?->name ?? "#{$junctionId}";
+                $availability = $other->core_count > 0
+                    ? " · {$availableOnOther}/{$other->core_count} cores free"
+                    : '';
 
                 return [
                     'id' => $other->id,
-                    'name' => $other->name ?? ('Cable #'.$other->id),
+                    'name' => $name,
                     'cable_type' => $other->cable_type,
+                    'core_count' => $other->core_count,
                     'junction_point_id' => $junctionId,
                     'junction_point_name' => $junction?->name,
-                    'label' => ($other->name ?? 'Cable #'.$other->id).' @ '.($junction?->name ?? "#{$junctionId}"),
+                    'available_cores_at_junction' => $availableOnOther,
+                    'label' => "{$name} @ {$junctionLabel}{$availability}",
                 ];
             })
             ->filter()
             ->values()
             ->all();
+    }
+
+    protected function countAvailableCoreEndsAtPoint(CableSegment $cable, int $pointId): int
+    {
+        $count = 0;
+
+        foreach ($cable->cores as $core) {
+            foreach (['start', 'end'] as $side) {
+                /** @var CableCoreEnd|null $end */
+                $end = $core->ends->firstWhere('side', $side);
+
+                if (! $end) {
+                    continue;
+                }
+
+                if (! CableRoute::isCoreSideAtRoutePoint($cable, $side, $pointId)) {
+                    continue;
+                }
+
+                if (! app(CableCoreConnectionCleanupService::class)->isCoreEndAvailable($end)) {
+                    continue;
+                }
+
+                $count += 1;
+            }
+        }
+
+        return $count;
     }
 
     /**

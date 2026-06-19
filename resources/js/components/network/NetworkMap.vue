@@ -30,6 +30,35 @@
             {{ $t('map.addBendHint') }}
         </div>
 
+        <div
+            class="absolute left-3 top-3 z-10 flex rounded-lg border border-theme bg-theme-card p-1 shadow-sm"
+            role="group"
+            :aria-label="$t('map.baseMapLabel')"
+        >
+            <button
+                type="button"
+                class="rounded-md px-2.5 py-1.5 text-xs font-medium transition"
+                :class="baseMapStyle === 'street'
+                    ? 'bg-theme-primary text-white shadow-sm'
+                    : 'text-theme-body hover:bg-theme-muted/40'"
+                :aria-pressed="baseMapStyle === 'street'"
+                @click="setBaseMapStyle('street')"
+            >
+                {{ $t('map.baseMapStreet') }}
+            </button>
+            <button
+                type="button"
+                class="rounded-md px-2.5 py-1.5 text-xs font-medium transition"
+                :class="baseMapStyle === 'satellite'
+                    ? 'bg-theme-primary text-white shadow-sm'
+                    : 'text-theme-body hover:bg-theme-muted/40'"
+                :aria-pressed="baseMapStyle === 'satellite'"
+                @click="setBaseMapStyle('satellite')"
+            >
+                {{ $t('map.baseMapSatellite') }}
+            </button>
+        </div>
+
         <div v-if="enableLiveLocation" class="absolute right-3 top-3 z-10 flex flex-col items-end gap-2">
             <button
                 type="button"
@@ -71,6 +100,8 @@ import {
     cableSharedEdgeMeta,
     cableCoreFlows,
     collectPointFlowPorts,
+    colocatedPointsCount,
+    findPointsAtLocation,
     formatDistanceM,
     DEFAULT_CENTER,
     DEFAULT_ZOOM,
@@ -121,10 +152,13 @@ const hasInitialFit = ref(false);
 const liveLocationActive = ref(false);
 const locationError = ref('');
 const hasCenteredOnUser = ref(false);
+const baseMapStyle = ref('street');
 
 const { t } = useI18n();
 
 let map = null;
+let osmLayer = null;
+let satelliteLayer = null;
 let resizeHandler = null;
 let markersLayer = null;
 let cablesLayer = null;
@@ -176,10 +210,44 @@ function markerIcon(point, options = {}) {
             preview: options.preview,
             dragging: options.dragging,
             cableTarget: isCableStart || isCableNextPoint,
+            stackCount: colocatedPointsCount(props.points, point),
         }),
         iconSize: [size, size],
         iconAnchor: [size / 2, size / 2],
     });
+}
+
+function openColocatedPointPicker(marker, clickedPoint) {
+    const colocated = findPointsAtLocation(props.points, clickedPoint.latitude, clickedPoint.longitude)
+        .sort((left, right) => String(left.name ?? '').localeCompare(String(right.name ?? '')));
+
+    const container = document.createElement('div');
+    container.className = 'network-popup network-popup--stack';
+
+    const title = document.createElement('strong');
+    title.textContent = t('map.colocatedPointsTitle', { count: colocated.length });
+    container.appendChild(title);
+
+    const list = document.createElement('ul');
+    list.className = 'network-popup__stack-list';
+
+    colocated.forEach((point) => {
+        const item = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'network-popup__stack-btn';
+        button.textContent = `${point.name ?? `Point #${point.id}`} · ${pointTypeLabels(point).join(', ')}`;
+        button.addEventListener('click', () => {
+            marker.closePopup();
+            emit('select-point', point);
+        });
+        item.appendChild(button);
+        list.appendChild(item);
+    });
+
+    container.appendChild(list);
+
+    marker.bindPopup(container, { className: 'network-point-popup network-point-popup--stack' }).openPopup();
 }
 
 function waypointIcon() {
@@ -644,6 +712,14 @@ function attachMarker(point) {
         }
 
         if (props.interactionMode === 'add') {
+            return;
+        }
+
+        const colocated = findPointsAtLocation(props.points, point.latitude, point.longitude);
+
+        if (colocated.length > 1) {
+            openColocatedPointPicker(marker, point);
+
             return;
         }
 
@@ -1336,13 +1412,44 @@ function toggleLiveLocation() {
     startLiveLocation();
 }
 
-onMounted(() => {
-    map = L.map(mapEl.value, { zoomControl: true }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+function setBaseMapStyle(style) {
+    if (!map || baseMapStyle.value === style) {
+        return;
+    }
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
+    const currentLayer = baseMapStyle.value === 'satellite' ? satelliteLayer : osmLayer;
+    const nextLayer = style === 'satellite' ? satelliteLayer : osmLayer;
+
+    if (currentLayer) {
+        map.removeLayer(currentLayer);
+    }
+
+    if (nextLayer) {
+        nextLayer.addTo(map);
+    }
+
+    baseMapStyle.value = style;
+}
+
+onMounted(() => {
+    map = L.map(mapEl.value, { zoomControl: false }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         maxZoom: 19,
-    }).addTo(map);
+    });
+
+    satelliteLayer = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+            maxZoom: 19,
+        },
+    );
+
+    osmLayer.addTo(map);
 
     cablesLayer = L.layerGroup().addTo(map);
     flowLayer = L.layerGroup().addTo(map);
@@ -1540,6 +1647,57 @@ onBeforeUnmount(() => {
     text-align: center;
     box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
     pointer-events: none;
+}
+
+.network-map-shell :deep(.network-marker__stack) {
+    position: absolute;
+    bottom: -4px;
+    left: -4px;
+    z-index: 2;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 9999px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35);
+    pointer-events: none;
+}
+
+.network-map-shell :deep(.network-popup--stack) {
+    display: grid;
+    gap: 8px;
+    min-width: 180px;
+}
+
+.network-map-shell :deep(.network-popup__stack-list) {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.network-map-shell :deep(.network-popup__stack-btn) {
+    width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.96);
+    padding: 6px 8px;
+    text-align: left;
+    font-size: 12px;
+    line-height: 1.35;
+    color: #0f172a;
+    cursor: pointer;
+}
+
+.network-map-shell :deep(.network-popup__stack-btn:hover) {
+    border-color: #2563eb;
+    background: #eff6ff;
 }
 
 .network-map-shell :deep(.network-cable-line--selected) {

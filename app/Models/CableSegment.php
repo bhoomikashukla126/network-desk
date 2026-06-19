@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\CableCoreConnectionCleanupService;
 use App\Support\CableRoute;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
@@ -45,6 +46,10 @@ class CableSegment extends Model
                 $cable->to_point_id = $pointIds[array_key_last($pointIds)];
                 $cable->path = CableRoute::legacyPath($route);
             }
+        });
+
+        static::deleting(function (CableSegment $cable): void {
+            app(CableCoreConnectionCleanupService::class)->detachCable($cable);
         });
     }
 

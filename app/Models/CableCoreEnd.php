@@ -2,11 +2,19 @@
 
 namespace App\Models;
 
+use App\Services\CableCoreConnectionCleanupService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CableCoreEnd extends Model
 {
+    protected static function booted(): void
+    {
+        static::deleting(function (CableCoreEnd $end): void {
+            app(CableCoreConnectionCleanupService::class)->detachCoreEnd($end);
+        });
+    }
+
     protected $fillable = [
         'cable_core_id',
         'side',
