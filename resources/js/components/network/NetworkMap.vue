@@ -31,31 +31,48 @@
         </div>
 
         <div
-            class="absolute left-3 top-3 z-10 flex rounded-lg border border-theme bg-theme-card p-1 shadow-sm"
-            role="group"
-            :aria-label="$t('map.baseMapLabel')"
+            class="absolute left-3 top-3 z-10 flex flex-col gap-2"
         >
+            <div
+                class="flex rounded-lg border border-theme bg-theme-card p-1 shadow-sm"
+                role="group"
+                :aria-label="$t('map.baseMapLabel')"
+            >
+                <button
+                    type="button"
+                    class="rounded-md px-2.5 py-1.5 text-xs font-medium transition"
+                    :class="baseMapStyle === 'street'
+                        ? 'bg-theme-primary text-white shadow-sm'
+                        : 'text-theme-body hover:bg-theme-muted/40'"
+                    :aria-pressed="baseMapStyle === 'street'"
+                    @click="setBaseMapStyle('street')"
+                >
+                    {{ $t('map.baseMapStreet') }}
+                </button>
+                <button
+                    type="button"
+                    class="rounded-md px-2.5 py-1.5 text-xs font-medium transition"
+                    :class="baseMapStyle === 'satellite'
+                        ? 'bg-theme-primary text-white shadow-sm'
+                        : 'text-theme-body hover:bg-theme-muted/40'"
+                    :aria-pressed="baseMapStyle === 'satellite'"
+                    @click="setBaseMapStyle('satellite')"
+                >
+                    {{ $t('map.baseMapSatellite') }}
+                </button>
+            </div>
+
             <button
                 type="button"
-                class="rounded-md px-2.5 py-1.5 text-xs font-medium transition"
-                :class="baseMapStyle === 'street'
-                    ? 'bg-theme-primary text-white shadow-sm'
+                class="rounded-lg border border-theme bg-theme-card px-2.5 py-1.5 text-xs font-medium shadow-sm transition"
+                :class="showPointLabels
+                    ? 'bg-theme-primary text-white'
                     : 'text-theme-body hover:bg-theme-muted/40'"
-                :aria-pressed="baseMapStyle === 'street'"
-                @click="setBaseMapStyle('street')"
+                :aria-pressed="showPointLabels"
+                :title="$t('map.showLabelsHint')"
+                @click="showPointLabels = !showPointLabels"
             >
-                {{ $t('map.baseMapStreet') }}
-            </button>
-            <button
-                type="button"
-                class="rounded-md px-2.5 py-1.5 text-xs font-medium transition"
-                :class="baseMapStyle === 'satellite'
-                    ? 'bg-theme-primary text-white shadow-sm'
-                    : 'text-theme-body hover:bg-theme-muted/40'"
-                :aria-pressed="baseMapStyle === 'satellite'"
-                @click="setBaseMapStyle('satellite')"
-            >
-                {{ $t('map.baseMapSatellite') }}
+                {{ $t('map.showLabels') }}
             </button>
         </div>
 
@@ -92,6 +109,7 @@ import {
     cablePathCoordinates,
     cableTypeColor,
     cableTypeLabel,
+    cableWeightForZoom,
     cableMapDistanceM,
     cableRoutePointIds,
     buildCableRenderChunks,
@@ -103,6 +121,9 @@ import {
     colocatedPointsCount,
     findPointsAtLocation,
     formatDistanceM,
+    mapBadgeSizeForZoom,
+    markerDisplayForZoom,
+    shouldShowCableBundleBadges,
     DEFAULT_CENTER,
     DEFAULT_ZOOM,
     normalizePointTypes,
@@ -154,6 +175,7 @@ const liveLocationActive = ref(false);
 const locationError = ref('');
 const hasCenteredOnUser = ref(false);
 const baseMapStyle = ref('street');
+const showPointLabels = ref(false);
 
 const { t } = useI18n();
 
@@ -175,6 +197,7 @@ let draftMarker = null;
 let draftCircle = null;
 let isDraggingDraft = false;
 let lastDraftVisualKey = '';
+let zoomSyncFrame = null;
 const markerRegistry = new Map();
 const draftWaypointRegistry = new Map();
 
@@ -196,9 +219,19 @@ const selectedPoint = computed(() => {
     return props.points.find((point) => String(point.id) === String(props.selectedPointId)) ?? null;
 });
 
+function currentMapZoom() {
+    return map?.getZoom?.() ?? DEFAULT_ZOOM;
+}
+
 function markerIcon(point, options = {}) {
     const selected = options.preview || String(point.id) === String(props.selectedPointId);
-    const size = options.preview ? 52 : (selected ? 48 : 32);
+    const stackCount = colocatedPointsCount(props.points, point);
+    const display = markerDisplayForZoom(currentMapZoom(), {
+        selected,
+        preview: options.preview,
+        stackCount,
+    });
+    const size = display.shellSize;
     const draftPointIds = (props.cableDraft?.nodes ?? [])
         .filter((node) => node.type === 'point')
         .map((node) => Number(node.point_id));
@@ -214,7 +247,9 @@ function markerIcon(point, options = {}) {
             preview: options.preview,
             dragging: options.dragging,
             cableTarget: isCableStart || isCableNextPoint,
-            stackCount: colocatedPointsCount(props.points, point),
+            stackCount,
+            showLabels: showPointLabels.value,
+            display,
         }),
         iconSize: [size, size],
         iconAnchor: [size / 2, size / 2],
@@ -376,6 +411,28 @@ function handleMapViewChange() {
     if (props.signalTrace?.active) {
         renderSignalTrace();
     }
+
+    scheduleMarkerZoomSync();
+}
+
+function scheduleMarkerZoomSync() {
+    if (zoomSyncFrame) {
+        return;
+    }
+
+    zoomSyncFrame = requestAnimationFrame(() => {
+        zoomSyncFrame = null;
+        syncMarkers();
+    });
+}
+
+function handleMapZoomEnd() {
+    if (props.signalTrace?.active) {
+        renderSignalTrace();
+    }
+
+    syncMarkers();
+    renderCables();
 }
 
 function renderSignalTrace() {
@@ -813,11 +870,14 @@ function syncMarkers() {
 }
 
 function cableBundleBadgeIcon(count) {
+    const size = mapBadgeSizeForZoom(currentMapZoom()) || 26;
+    const fontSize = size <= 18 ? 9 : (size <= 22 ? 10 : 11);
+
     return L.divIcon({
         className: 'network-cable-bundle-wrap',
-        html: `<span class="network-cable-bundle-badge" title="${count} cables">${count}</span>`,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
+        html: `<span class="network-cable-bundle-badge" style="width:${size}px;height:${size}px;font-size:${fontSize}px;line-height:${size}px" title="${count} cables">${count}</span>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
     });
 }
 
@@ -920,6 +980,9 @@ function renderCableFlows(edgeGroups) {
         const isConnectedToSelectedPoint = selectedPoint.value
             && routePointIds.includes(Number(selectedPoint.value.id));
         const emphasize = isSelected || isConnectedToSelectedPoint;
+        const zoom = currentMapZoom();
+        const flowBaseWeight = emphasize ? 5 : 3;
+        const flowWeight = cableWeightForZoom(zoom, flowBaseWeight);
 
         flows.forEach((flow, flowIndex) => {
             const flowOffsetMeters = (flowIndex - ((flows.length - 1) / 2)) * 1.4;
@@ -942,7 +1005,7 @@ function renderCableFlows(edgeGroups) {
 
                 flowLayer.addLayer(L.polyline(flowCoords, {
                     color: flow.color,
-                    weight: emphasize ? 5 : 3,
+                    weight: flowWeight,
                     opacity: emphasize ? 0.95 : 0.72,
                     lineCap: 'round',
                     className: [
@@ -955,6 +1018,10 @@ function renderCableFlows(edgeGroups) {
             });
         });
     });
+
+    if (!showPointLabels.value) {
+        return;
+    }
 
     portsByPoint.forEach((ports, pointId) => {
         const point = pointsById.value[pointId];
@@ -1050,7 +1117,9 @@ function renderCables() {
             && routePointIds.includes(Number(selectedPoint.value.id));
 
         const color = cableTypeColor(cable.cable_type);
-        const weight = isSelected ? 7 : (isConnectedToSelectedPoint ? 5 : 4);
+        const zoom = currentMapZoom();
+        const baseWeight = isSelected ? 7 : (isConnectedToSelectedPoint ? 5 : 4);
+        const weight = cableWeightForZoom(zoom, baseWeight);
         const opacity = isSelected || isConnectedToSelectedPoint ? 1 : 0.85;
         const mapDistance = cableMapDistanceM(cable, pointsById.value);
         const mapDistanceLabel = formatDistanceM(mapDistance);
@@ -1112,33 +1181,35 @@ function renderCables() {
         });
     });
 
-    sharedBadges.forEach((badge) => {
-        if (renderedBundleBadges.has(badge.edgeKey)) {
-            return;
-        }
+    if (showPointLabels.value && shouldShowCableBundleBadges(currentMapZoom())) {
+        sharedBadges.forEach((badge) => {
+            if (renderedBundleBadges.has(badge.edgeKey)) {
+                return;
+            }
 
-        renderedBundleBadges.add(badge.edgeKey);
+            renderedBundleBadges.add(badge.edgeKey);
 
-        const badgeMarker = L.marker(badge.midpoint, {
-            icon: cableBundleBadgeIcon(badge.groupCables.length),
-            interactive: true,
-            zIndexOffset: 1200,
-        });
-
-        badgeMarker.bindPopup(
-            buildCableBundlePopupHtml(badge.groupCables, pointsById.value),
-            { className: 'network-cable-popup', maxWidth: 260 },
-        );
-        attachCableBundlePopupHandlers(badgeMarker, badge.groupCables);
-
-        if (props.interactionMode === 'view') {
-            badgeMarker.on('click', (event) => {
-                L.DomEvent.stopPropagation(event);
+            const badgeMarker = L.marker(badge.midpoint, {
+                icon: cableBundleBadgeIcon(badge.groupCables.length),
+                interactive: true,
+                zIndexOffset: 1200,
             });
-        }
 
-        cablesLayer.addLayer(badgeMarker);
-    });
+            badgeMarker.bindPopup(
+                buildCableBundlePopupHtml(badge.groupCables, pointsById.value),
+                { className: 'network-cable-popup', maxWidth: 260 },
+            );
+            attachCableBundlePopupHandlers(badgeMarker, badge.groupCables);
+
+            if (props.interactionMode === 'view') {
+                badgeMarker.on('click', (event) => {
+                    L.DomEvent.stopPropagation(event);
+                });
+            }
+
+            cablesLayer.addLayer(badgeMarker);
+        });
+    }
 
     renderCableFlows(edgeGroups);
 }
@@ -1280,6 +1351,11 @@ watch(() => props.signalTrace, () => {
 }, { deep: true });
 
 watch(() => props.draggable, () => syncMarkers());
+
+watch(showPointLabels, () => {
+    syncMarkers();
+    renderCables();
+});
 
 watch(() => props.layoutVisible, (visible) => {
     if (!visible || !map) {
@@ -1515,7 +1591,8 @@ onMounted(() => {
     markersLayer = L.layerGroup().addTo(map);
 
     map.on('click', handleMapClick);
-    map.on('move zoom zoomend moveend', handleMapViewChange);
+    map.on('move zoom', handleMapViewChange);
+    map.on('zoomend moveend', handleMapZoomEnd);
 
     syncMarkers();
     renderCables();
@@ -1541,6 +1618,11 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     stopLiveLocation();
+
+    if (zoomSyncFrame) {
+        cancelAnimationFrame(zoomSyncFrame);
+    }
+
     markerRegistry.clear();
 
     if (resizeHandler) {
@@ -1625,22 +1707,18 @@ onBeforeUnmount(() => {
 
 .network-map-shell :deep(.network-marker) {
     position: relative;
-    width: 32px;
-    height: 32px;
+    width: var(--marker-shell-size, 32px);
+    height: var(--marker-shell-size, 32px);
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: width 0.12s ease, height 0.12s ease;
 }
 
 .network-map-shell :deep(.network-marker--selected),
 .network-map-shell :deep(.network-marker--preview) {
-    width: 48px;
-    height: 48px;
-}
-
-.network-map-shell :deep(.network-marker--preview) {
-    width: 52px;
-    height: 52px;
+    width: var(--marker-shell-size, 48px);
+    height: var(--marker-shell-size, 48px);
 }
 
 .network-map-shell :deep(.network-marker__pin) {
@@ -1649,34 +1727,40 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
+    width: var(--marker-pin-size, 22px);
+    height: var(--marker-pin-size, 22px);
     border-radius: 9999px;
     background: var(--marker-color);
-    border: 2.5px solid #fff;
+    border: var(--marker-border-width, 2.5px) solid #fff;
     box-shadow: 0 2px 8px rgba(15, 23, 42, 0.35);
-    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease;
+    transition: width 0.12s ease, height 0.12s ease, border-width 0.12s ease, transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease;
     color: #fff;
+}
+
+.network-map-shell :deep(.network-marker--zoom-dot .network-marker__pin) {
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);
 }
 
 .network-map-shell :deep(.network-marker__icon) {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 12px;
-    height: 12px;
+    width: var(--marker-icon-size, 12px);
+    height: var(--marker-icon-size, 12px);
+    transition: width 0.12s ease, height 0.12s ease, opacity 0.12s ease;
 }
 
 .network-map-shell :deep(.network-marker__icon svg) {
-    width: 12px;
-    height: 12px;
+    width: 100%;
+    height: 100%;
+}
+
+.network-map-shell :deep(.network-marker--zoom-dot .network-marker__icon) {
+    display: none;
 }
 
 .network-map-shell :deep(.network-marker--selected .network-marker__pin),
 .network-map-shell :deep(.network-marker--preview .network-marker__pin) {
-    width: 28px;
-    height: 28px;
-    border-width: 3px;
     box-shadow: 0 4px 14px rgba(59, 130, 246, 0.45);
 }
 
@@ -1686,16 +1770,25 @@ onBeforeUnmount(() => {
     outline-offset: 2px;
 }
 
-.network-map-shell :deep(.network-marker--selected .network-marker__icon),
-.network-map-shell :deep(.network-marker--preview .network-marker__icon) {
-    width: 14px;
-    height: 14px;
-}
-
-.network-map-shell :deep(.network-marker--selected .network-marker__icon svg),
-.network-map-shell :deep(.network-marker--preview .network-marker__icon svg) {
-    width: 14px;
-    height: 14px;
+.network-map-shell :deep(.network-marker__label) {
+    position: absolute;
+    top: calc(var(--marker-shell-size, 32px) * -0.875);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    max-width: min(140px, 28vw);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    background: rgba(15, 23, 42, 0.88);
+    color: #fff;
+    font-size: clamp(9px, 2.4vw, 11px);
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25);
+    pointer-events: none;
+    transition: opacity 0.15s ease;
 }
 
 .network-map-shell :deep(.network-marker--dragging .network-marker__pin) {
@@ -1718,26 +1811,6 @@ onBeforeUnmount(() => {
     border-color: rgba(59, 130, 246, 0.35);
 }
 
-.network-map-shell :deep(.network-marker__label) {
-    position: absolute;
-    top: -28px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 3;
-    max-width: 140px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding: 3px 8px;
-    border-radius: 9999px;
-    background: rgba(15, 23, 42, 0.88);
-    color: #fff;
-    font-size: 11px;
-    font-weight: 600;
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25);
-    pointer-events: none;
-}
-
 .network-map-shell :deep(.network-marker__badge) {
     display: inline-block;
     margin-right: 4px;
@@ -1753,39 +1826,39 @@ onBeforeUnmount(() => {
 
 .network-map-shell :deep(.network-marker__multi) {
     position: absolute;
-    top: -4px;
-    right: -4px;
+    top: -3px;
+    right: -3px;
     z-index: 2;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
+    min-width: var(--marker-badge-size, 16px);
+    height: var(--marker-badge-size, 16px);
+    padding: 0 3px;
     border-radius: 9999px;
     background: #0f172a;
     color: #fff;
-    font-size: 9px;
+    font-size: var(--marker-badge-font-size, 9px);
     font-weight: 700;
-    line-height: 16px;
+    line-height: var(--marker-badge-size, 16px);
     text-align: center;
-    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
     pointer-events: none;
 }
 
 .network-map-shell :deep(.network-marker__stack) {
     position: absolute;
-    bottom: -4px;
-    left: -4px;
+    bottom: -3px;
+    left: -3px;
     z-index: 2;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
+    min-width: var(--marker-badge-size, 16px);
+    height: var(--marker-badge-size, 16px);
+    padding: 0 3px;
     border-radius: 9999px;
     background: #2563eb;
     color: #fff;
-    font-size: 9px;
+    font-size: var(--marker-badge-font-size, 9px);
     font-weight: 700;
-    line-height: 16px;
+    line-height: var(--marker-badge-size, 16px);
     text-align: center;
-    box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35);
+    box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
     pointer-events: none;
 }
 

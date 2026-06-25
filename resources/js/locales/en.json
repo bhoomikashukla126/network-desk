@@ -110,6 +110,8 @@
         "baseMapLabel": "Map style",
         "baseMapStreet": "Map",
         "baseMapSatellite": "Satellite",
+        "showLabels": "Labels",
+        "showLabelsHint": "Show point names on the map",
         "myLocation": "Show my live location",
         "stopMyLocation": "Stop live location",
         "locationError": "Could not get your location.",

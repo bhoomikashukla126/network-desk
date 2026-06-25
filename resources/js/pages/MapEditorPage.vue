@@ -31,7 +31,7 @@
                 <div v-if="permissions.create" class="flex shrink-0 flex-wrap gap-2">
                     <button
                         type="button"
-                        class="btn-primary inline-flex items-center justify-center gap-2 rounded-lg px-2.5 py-2.5 text-sm font-semibold shadow-sm transition sm:px-4"
+                        class="btn-primary inline-flex items-center justify-center gap-2 rounded-lg px-2.5 py-2.5 text-sm font-semibold shadow-sm transition sm:px-4 disabled:cursor-not-allowed disabled:opacity-50"
                         :class="interactionMode === 'add' ? 'ring-2 ring-theme-primary ring-offset-2' : ''"
                         @click="setInteractionMode(interactionMode === 'add' ? 'view' : 'add')"
                     >
@@ -40,7 +40,7 @@
                     </button>
                     <button
                         type="button"
-                        class="btn-secondary inline-flex items-center justify-center gap-2 rounded-lg border px-2.5 py-2.5 text-sm font-semibold shadow-sm transition sm:px-4"
+                        class="btn-secondary inline-flex items-center justify-center gap-2 rounded-lg border px-2.5 py-2.5 text-sm font-semibold shadow-sm transition sm:px-4 disabled:cursor-not-allowed disabled:opacity-50"
                         :class="interactionMode === 'cable' ? 'ring-2 ring-theme-primary ring-offset-2' : ''"
                         @click="setInteractionMode(interactionMode === 'cable' ? 'view' : 'cable')"
                     >
@@ -93,7 +93,7 @@
 
         <div class="grid min-h-0 flex-1 items-stretch gap-4" :class="showSidePanel ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : ''">
             <div
-                class="map-editor-map relative min-h-0 h-full"
+                class="map-editor-map relative min-h-0 h-full min-h-[420px]"
                 :class="mapPanelClass"
             >
                 <button

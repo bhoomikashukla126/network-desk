@@ -23,13 +23,265 @@ export const STATUS_COLORS = {
 export const DEFAULT_CENTER = [20.5937, 78.9629];
 export const DEFAULT_ZOOM = 5;
 
+function lerp(start, end, t) {
+    return start + ((end - start) * t);
+}
+
+export function markerDisplayForZoom(zoom, options = {}) {
+    const { selected = false, preview = false, stackCount = 0 } = options;
+    const z = Number.isFinite(zoom) ? zoom : DEFAULT_ZOOM;
+
+    if (preview) {
+        const compact = z < 11;
+
+        return {
+            level: compact ? 'compact' : 'full',
+            shellSize: compact ? 34 : 44,
+            pinSize: compact ? 20 : 26,
+            iconSize: compact ? 10 : 13,
+            borderWidth: 2.5,
+            showIcon: true,
+            showBadges: true,
+            showRing: true,
+            badgeSize: compact ? 12 : 16,
+            badgeFontSize: compact ? 8 : 9,
+        };
+    }
+
+    if (selected) {
+        if (z < 8) {
+            return {
+                level: 'dot',
+                shellSize: 11,
+                pinSize: 7,
+                iconSize: 0,
+                borderWidth: 1.5,
+                showIcon: false,
+                showBadges: true,
+                showRing: true,
+                badgeSize: 9,
+                badgeFontSize: 7,
+            };
+        }
+
+        if (z < 10) {
+            return {
+                level: 'dot',
+                shellSize: 13,
+                pinSize: 8,
+                iconSize: 0,
+                borderWidth: 1.5,
+                showIcon: false,
+                showBadges: true,
+                showRing: true,
+                badgeSize: 10,
+                badgeFontSize: 7,
+            };
+        }
+
+        if (z < 12) {
+            const t = (z - 10) / 2;
+
+            return {
+                level: 'compact',
+                shellSize: Math.round(lerp(16, 24, t)),
+                pinSize: Math.round(lerp(11, 16, t)),
+                iconSize: Math.round(lerp(6, 9, t)),
+                borderWidth: 2,
+                showIcon: z >= 11,
+                showBadges: true,
+                showRing: true,
+                badgeSize: Math.round(lerp(10, 13, t)),
+                badgeFontSize: 8,
+            };
+        }
+
+        if (z < 14) {
+            const t = (z - 12) / 2;
+
+            return {
+                level: 'icon',
+                shellSize: Math.round(lerp(28, 36, t)),
+                pinSize: Math.round(lerp(18, 22, t)),
+                iconSize: Math.round(lerp(9, 11, t)),
+                borderWidth: 2.5,
+                showIcon: true,
+                showBadges: true,
+                showRing: true,
+                badgeSize: Math.round(lerp(13, 15, t)),
+                badgeFontSize: 9,
+            };
+        }
+
+        return {
+            level: 'full',
+            shellSize: 40,
+            pinSize: 24,
+            iconSize: 12,
+            borderWidth: 3,
+            showIcon: true,
+            showBadges: true,
+            showRing: true,
+            badgeSize: 16,
+            badgeFontSize: 9,
+        };
+    }
+
+    if (z < 8) {
+        return {
+            level: 'dot',
+            shellSize: 8,
+            pinSize: 5,
+            iconSize: 0,
+            borderWidth: 1,
+            showIcon: false,
+            showBadges: false,
+            showRing: false,
+            badgeSize: 8,
+            badgeFontSize: 6,
+        };
+    }
+
+    if (z < 10) {
+        return {
+            level: 'dot',
+            shellSize: 10,
+            pinSize: 6,
+            iconSize: 0,
+            borderWidth: 1,
+            showIcon: false,
+            showBadges: stackCount > 1,
+            showRing: false,
+            badgeSize: 9,
+            badgeFontSize: 7,
+        };
+    }
+
+    if (z < 12) {
+        const t = (z - 10) / 2;
+
+        return {
+            level: 'compact',
+            shellSize: Math.round(lerp(12, 17, t)),
+            pinSize: Math.round(lerp(8, 11, t)),
+            iconSize: Math.round(lerp(0, 7, t)),
+            borderWidth: 1.5,
+            showIcon: z >= 11,
+            showBadges: stackCount > 1 || z >= 11,
+            showRing: false,
+            badgeSize: Math.round(lerp(9, 12, t)),
+            badgeFontSize: 7,
+        };
+    }
+
+    if (z < 14) {
+        const t = (z - 12) / 2;
+
+        return {
+            level: 'compact',
+            shellSize: Math.round(lerp(18, 24, t)),
+            pinSize: Math.round(lerp(13, 16, t)),
+            iconSize: Math.round(lerp(7, 9, t)),
+            borderWidth: 2,
+            showIcon: true,
+            showBadges: true,
+            showRing: false,
+            badgeSize: Math.round(lerp(12, 14, t)),
+            badgeFontSize: 8,
+        };
+    }
+
+    if (z < 16) {
+        return {
+            level: 'icon',
+            shellSize: 26,
+            pinSize: 17,
+            iconSize: 10,
+            borderWidth: 2,
+            showIcon: true,
+            showBadges: true,
+            showRing: false,
+            badgeSize: 14,
+            badgeFontSize: 8,
+        };
+    }
+
+    return {
+        level: 'full',
+        shellSize: 30,
+        pinSize: 20,
+        iconSize: 11,
+        borderWidth: 2.5,
+        showIcon: true,
+        showBadges: true,
+        showRing: false,
+        badgeSize: 16,
+        badgeFontSize: 9,
+    };
+}
+
+export function mapBadgeSizeForZoom(zoom) {
+    const z = Number.isFinite(zoom) ? zoom : DEFAULT_ZOOM;
+
+    if (z < 11) {
+        return 0;
+    }
+
+    if (z < 13) {
+        return 18;
+    }
+
+    if (z < 15) {
+        return 22;
+    }
+
+    return 26;
+}
+
+export function cableWeightForZoom(zoom, baseWeight) {
+    const z = Number.isFinite(zoom) ? zoom : DEFAULT_ZOOM;
+    const base = Number.isFinite(baseWeight) ? baseWeight : 4;
+
+    if (z < 9) {
+        return 1;
+    }
+
+    if (z < 11) {
+        return Math.max(1, Math.round(base * 0.45));
+    }
+
+    if (z < 13) {
+        return Math.max(2, Math.round(base * 0.65));
+    }
+
+    if (z < 15) {
+        return Math.max(3, Math.round(base * 0.85));
+    }
+
+    return base;
+}
+
+export function shouldShowCableBundleBadges(zoom) {
+    return (Number.isFinite(zoom) ? zoom : DEFAULT_ZOOM) >= 11;
+}
+
 export function pointColor(type) {
     return POINT_COLORS[type] ?? '#64748b';
 }
 
 export function normalizePointTypes(point) {
-    if (Array.isArray(point?.types) && point.types.length) {
-        return [...new Set(point.types.filter(Boolean))];
+    let types = point?.types;
+
+    if (typeof types === 'string') {
+        try {
+            types = JSON.parse(types);
+        } catch {
+            types = null;
+        }
+    }
+
+    if (Array.isArray(types) && types.length) {
+        return [...new Set(types.filter(Boolean))];
     }
 
     if (point?.type) {
@@ -105,14 +357,24 @@ export function pointTypeIcon(type) {
 }
 
 export function buildMarkerHtml(point, options = {}) {
-    const { selected = false, dragging = false, cableTarget = false, preview = false, stackCount = 0 } = options;
+    const {
+        selected = false,
+        dragging = false,
+        cableTarget = false,
+        preview = false,
+        stackCount = 0,
+        showLabels = false,
+        display = null,
+    } = options;
     const types = normalizePointTypes(point);
     const primaryType = types[0];
     const color = pointColor(primaryType);
     const name = String(point.name ?? '').slice(0, 32);
     const typeLabel = pointTypeLabels(point).join(', ');
+    const markerDisplay = display ?? markerDisplayForZoom(DEFAULT_ZOOM, { selected, preview, stackCount });
     const classes = [
         'network-marker',
+        `network-marker--zoom-${markerDisplay.level}`,
         selected || preview ? 'network-marker--selected' : '',
         preview ? 'network-marker--preview' : '',
         dragging ? 'network-marker--dragging' : '',
@@ -125,23 +387,41 @@ export function buildMarkerHtml(point, options = {}) {
         ? (name || typeLabel)
         : name;
 
-    const label = (selected || preview) && labelText
+    const showLabel = showLabels && Boolean(labelText) && markerDisplay.level !== 'dot';
+
+    const label = showLabel
         ? `<span class="network-marker__label">${preview && !name ? `<span class="network-marker__badge">New</span> ` : ''}${escapeHtml(labelText)}</span>`
         : '';
 
-    const multiBadge = types.length > 1
+    const tooltipText = showLabels ? (name || typeLabel) : '';
+
+    const multiBadge = markerDisplay.showBadges && types.length > 1
         ? `<span class="network-marker__multi" title="${escapeHtml(typeLabel)}">${types.length}</span>`
         : '';
 
-    const stackBadge = stackCount > 1
+    const stackBadge = markerDisplay.showBadges && stackCount > 1
         ? `<span class="network-marker__stack" title="${stackCount} points here">${stackCount}</span>`
         : '';
 
+    const iconHtml = markerDisplay.showIcon
+        ? `<span class="network-marker__icon">${pointTypeIcon(primaryType || 'junction')}</span>`
+        : '';
+
+    const markerStyle = [
+        `--marker-color:${color}`,
+        `--marker-shell-size:${markerDisplay.shellSize}px`,
+        `--marker-pin-size:${markerDisplay.pinSize}px`,
+        `--marker-icon-size:${markerDisplay.iconSize}px`,
+        `--marker-border-width:${markerDisplay.borderWidth}px`,
+        `--marker-badge-size:${markerDisplay.badgeSize ?? 16}px`,
+        `--marker-badge-font-size:${markerDisplay.badgeFontSize ?? 9}px`,
+    ].join(';');
+
     return `
-        <div class="${classes}" title="${escapeHtml(name || typeLabel)}">
-            ${(selected || preview) ? '<span class="network-marker__ring"></span><span class="network-marker__ring network-marker__ring--delayed"></span>' : ''}
-            <span class="network-marker__pin" style="--marker-color:${color}">
-                <span class="network-marker__icon">${pointTypeIcon(primaryType || 'junction')}</span>
+        <div class="${classes}"${tooltipText ? ` title="${escapeHtml(tooltipText)}"` : ''} style="${markerStyle}">
+            ${(selected || preview) && markerDisplay.showRing ? '<span class="network-marker__ring"></span><span class="network-marker__ring network-marker__ring--delayed"></span>' : ''}
+            <span class="network-marker__pin">
+                ${iconHtml}
                 ${multiBadge}
                 ${stackBadge}
             </span>

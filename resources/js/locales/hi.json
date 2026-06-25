@@ -110,6 +110,8 @@
         "baseMapLabel": "मैप शैली",
         "baseMapStreet": "मैप",
         "baseMapSatellite": "सैटेलाइट",
+        "showLabels": "लेबल",
+        "showLabelsHint": "मानचित्र पर पॉइंट के नाम दिखाएँ",
         "myLocation": "मेरी लाइव लोकेशन दिखाएँ",
         "stopMyLocation": "लाइव लोकेशन बंद करें",
         "locationError": "आपकी लोकेशन नहीं मिल सकी।",
