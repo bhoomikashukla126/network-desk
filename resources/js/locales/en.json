@@ -438,7 +438,43 @@
         "workspaces": "Workspaces",
         "workspaceHome": "Workspace home",
         "help": "Help & wiki",
-        "logout": "Logout"
+        "logout": "Logout",
+        "keyboardShortcuts": "Keyboard shortcuts"
+    },
+    "shortcuts": {
+        "title": "Keyboard shortcuts",
+        "description": "Operate the app with the keyboard. Shortcuts are saved for your user in this workspace.",
+        "hint": "Press a shortcut key, or type two keys in sequence for actions like Go to map (G then M). Use Change to rebind any action.",
+        "skipToContent": "Skip to main content",
+        "close": "Close shortcuts",
+        "pressKeys": "Press keys…",
+        "change": "Change",
+        "reset": "Reset",
+        "resetAll": "Reset all to defaults",
+        "cancel": "Cancel",
+        "done": "Done",
+        "unassigned": "Unassigned",
+        "categories": {
+            "general": "General",
+            "navigation": "Navigation",
+            "actions": "Actions"
+        },
+        "columns": {
+            "action": "Action",
+            "shortcut": "Shortcut",
+            "edit": "Edit"
+        },
+        "actions": {
+            "showHelp": "Show keyboard shortcuts",
+            "closeOverlay": "Close dialog or menu",
+            "focusSearch": "Focus search on list pages",
+            "toggleChrome": "Toggle fullscreen workspace",
+            "navDashboard": "Go to dashboard",
+            "navMap": "Go to map",
+            "navPoints": "Go to points",
+            "navAccess": "Go to roles & members",
+            "activityLog": "Open activity log"
+        }
     },
     "activity": {
         "descriptionAll": "All actions across this workspace.",

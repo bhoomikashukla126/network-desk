@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\PointImageController;
 use App\Http\Controllers\Api\WorkspaceCableTypeController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SessionController;
+use App\Http\Controllers\Api\UserPreferenceController;
 use App\Http\Controllers\AppController;
 use App\Http\Controllers\Auth\CentralAuthController;
 use App\Http\Controllers\DocumentationController;
@@ -37,6 +38,8 @@ Route::middleware([
     Route::prefix('api')->group(function () {
         Route::get('/session', [SessionController::class, 'show']);
         Route::post('/session/quotas/refresh', [SessionController::class, 'refreshQuotas']);
+        Route::get('/user/preferences', [UserPreferenceController::class, 'show']);
+        Route::put('/user/preferences', [UserPreferenceController::class, 'update']);
 
         Route::middleware(TrackWorkspaceQuota::class)->group(function () {
             Route::get('/activity', [ActivityLogController::class, 'index']);

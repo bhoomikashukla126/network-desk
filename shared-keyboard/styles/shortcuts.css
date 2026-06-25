@@ -1,0 +1,26 @@
+.skip-link {
+    position: absolute;
+    left: 1rem;
+    top: -3rem;
+    z-index: 100;
+    border-radius: 0.75rem;
+    border: 1px solid var(--theme-border, #cbd5e1);
+    background-color: var(--theme-card-bg, #fff);
+    color: var(--theme-text-primary, #0f172a);
+    padding: 0.5rem 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
+    transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+    top: 1rem;
+    outline: 2px solid var(--theme-primary, #2563eb);
+    outline-offset: 2px;
+}
+
+.app-kbd {
+    background-color: color-mix(in srgb, var(--theme-background, #f8fafc) 70%, var(--theme-card-bg, #fff));
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}

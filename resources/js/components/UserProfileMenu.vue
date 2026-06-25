@@ -92,6 +92,15 @@
                         {{ activityLabel }}
                     </button>
 
+                    <button
+                        type="button"
+                        class="hover-surface flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-theme-body transition"
+                        @click="openShortcuts"
+                    >
+                        <Keyboard class="h-4 w-4 text-theme-muted" />
+                        {{ t('profile.keyboardShortcuts') }}
+                    </button>
+
                     <a
                         v-if="workspaceHomeUrl"
                         :href="workspaceHomeUrl"
@@ -142,7 +151,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ArrowLeft, BookOpen, ChevronDown, Home, LogOut, RefreshCw, ScrollText } from 'lucide-vue-next';
+import { ArrowLeft, BookOpen, ChevronDown, Home, Keyboard, LogOut, RefreshCw, ScrollText } from 'lucide-vue-next';
 import { api } from '../api/client';
 import { formatStorageBytes } from '../utils/formatStorage';
 
@@ -150,7 +159,7 @@ const props = defineProps({
     session: { type: Object, required: true },
 });
 
-const emit = defineEmits(['open-activity', 'quotas-refreshed']);
+const emit = defineEmits(['open-activity', 'open-shortcuts', 'quotas-refreshed']);
 
 const { t } = useI18n();
 
@@ -218,6 +227,11 @@ function close() {
 function openActivity() {
     close();
     emit('open-activity');
+}
+
+function openShortcuts() {
+    close();
+    emit('open-shortcuts');
 }
 
 async function refreshUsageData() {

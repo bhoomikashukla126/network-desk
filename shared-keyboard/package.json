@@ -1,0 +1,17 @@
+{
+    "name": "@platform/keyboard",
+    "private": true,
+    "type": "module",
+    "exports": {
+        "./core": "./js/core.js",
+        "./events": "./js/events.js",
+        "./preferences": "./js/createPreferencesApi.js",
+        "./vue/modal": "./vue/KeyboardShortcutsModal.vue",
+        "./vue/composable": "./vue/createUseKeyboardShortcuts.js",
+        "./vue/setup": "./vue/setupExtensionKeyboard.js",
+        "./vue/create-app": "./vue/createAppKeyboardShortcuts.js",
+        "./styles": "./styles/shortcuts.css",
+        "./configs/*": "./configs/*.js",
+        "./vanilla": "./vanilla/index.js"
+    }
+}
