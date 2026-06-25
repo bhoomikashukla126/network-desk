@@ -145,6 +145,28 @@ html {
     background-color: var(--theme-card-bg);
 }
 
+.app-chrome-toggle {
+    border-color: var(--theme-border);
+    background-color: var(--theme-card-bg);
+    color: var(--theme-text-primary);
+}
+
+.app-chrome-toggle:hover {
+    background-color: color-mix(in srgb, var(--theme-card-bg) 85%, var(--theme-primary));
+}
+
+.app-main-fullscreen {
+    max-width: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+}
+
+.map-editor-page {
+    min-height: 0;
+}
+
 .app-card {
     border-color: var(--theme-border);
     background-color: var(--theme-card-bg);

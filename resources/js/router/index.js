@@ -11,7 +11,7 @@ const routes = [
         component: AppLayout,
         children: [
             { path: '', name: 'dashboard.index', component: DashboardPage },
-            { path: 'map', name: 'map.index', component: MapEditorPage },
+            { path: 'map', name: 'map.index', component: MapEditorPage, meta: { fillViewport: true } },
             { path: 'points', name: 'points.index', component: PointsIndex },
             { path: 'access', name: 'access.index', component: AccessControlPage },
         ],

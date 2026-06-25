@@ -12,7 +12,9 @@ use App\Services\ActivityLogService;
 use App\Services\CableCoreConnectionCleanupService;
 use App\Services\CableCoreSyncService;
 use App\Services\CableSplitJoinService;
+use App\Support\ActivityLogDetailsBuilder;
 use App\Support\CableRoute;
+use App\Support\CableSegmentSnapshot;
 use App\Support\CableTypeCatalog;
 use App\Support\DeviceConnectionLabel;
 use App\Support\FiberCoreColors;
@@ -117,6 +119,7 @@ class CableSegmentController extends Controller
             'cable_segment',
             (string) $cable->id,
             $cable->name ?? "Cable #{$cable->id}",
+            ActivityLogDetailsBuilder::created(CableSegmentSnapshot::fields($cable)),
         );
 
         return response()->json(['data' => $this->presentCable($cable)], 201);
@@ -132,8 +135,10 @@ class CableSegmentController extends Controller
             $validated['route'],
         );
 
+        $before = CableSegmentSnapshot::fields($this->loadCableRelations($cableSegment));
         $cableSegment->update($validated);
         $this->coreSync->sync($cableSegment, $corePayload);
+        $after = $this->loadCableRelations($cableSegment->fresh());
 
         app(ActivityLogService::class)->record(
             $request,
@@ -141,6 +146,7 @@ class CableSegmentController extends Controller
             'cable_segment',
             (string) $cableSegment->id,
             $cableSegment->name ?? "Cable #{$cableSegment->id}",
+            ActivityLogDetailsBuilder::updated($before, CableSegmentSnapshot::fields($after)),
         );
 
         return response()->json(['data' => $this->presentCable($this->loadCableRelations($cableSegment->fresh()))]);
@@ -152,6 +158,9 @@ class CableSegmentController extends Controller
 
         $id = (string) $cableSegment->id;
         $name = $cableSegment->name ?? "Cable #{$id}";
+        $metadata = ActivityLogDetailsBuilder::deleted(
+            CableSegmentSnapshot::fields($this->loadCableRelations($cableSegment)),
+        );
 
         $cableSegment->load('images');
 
@@ -167,6 +176,7 @@ class CableSegmentController extends Controller
             'cable_segment',
             $id,
             $name,
+            $metadata,
         );
 
         return response()->json(['message' => 'Cable segment deleted.']);
@@ -203,7 +213,12 @@ class CableSegmentController extends Controller
             CableRoute::normalize($cableSegment->route, $cableSegment),
         );
 
-        $result = $this->splitJoin->split($cableSegment, (int) $validated['split_point_id']);
+        $before = CableSegmentSnapshot::fields($this->loadCableRelations($cableSegment));
+        $splitPointId = (int) $validated['split_point_id'];
+        $splitPoint = NetworkPoint::query()->find($splitPointId);
+        $result = $this->splitJoin->split($cableSegment, $splitPointId);
+        $first = $this->loadCableRelations($result['first']);
+        $second = $this->loadCableRelations($result['second']);
 
         app(ActivityLogService::class)->record(
             $request,
@@ -211,6 +226,11 @@ class CableSegmentController extends Controller
             'cable_segment',
             (string) $cableSegment->id,
             $cableSegment->name ?? "Cable #{$cableSegment->id}",
+            ActivityLogDetailsBuilder::created(array_merge($before, [
+                'split_point' => ActivityLogDetailsBuilder::field($splitPoint?->name ?? "#{$splitPointId}"),
+                'first_segment' => ActivityLogDetailsBuilder::field($first->name ?? "Cable #{$first->id}"),
+                'second_segment' => ActivityLogDetailsBuilder::field($second->name ?? "Cable #{$second->id}"),
+            ])),
         );
 
         return response()->json([
@@ -234,6 +254,7 @@ class CableSegmentController extends Controller
         abort_unless($other && $other->workspace_id === $cableSegment->workspace_id, 422, 'The selected cable was not found.');
 
         $merged = $this->splitJoin->join($cableSegment, $other);
+        $mergedCable = $this->loadCableRelations($merged);
 
         app(ActivityLogService::class)->record(
             $request,
@@ -241,6 +262,12 @@ class CableSegmentController extends Controller
             'cable_segment',
             (string) $merged->id,
             $merged->name ?? "Cable #{$merged->id}",
+            ActivityLogDetailsBuilder::created(array_merge(
+                CableSegmentSnapshot::fields($mergedCable),
+                [
+                    'joined_cable' => ActivityLogDetailsBuilder::field($other->name ?? "Cable #{$other->id}"),
+                ],
+            )),
         );
 
         return response()->json([

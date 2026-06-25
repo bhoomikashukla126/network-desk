@@ -1,5 +1,5 @@
 <template>
-    <div class="network-map-shell relative isolate z-0 h-full overflow-hidden rounded-2xl border border-theme shadow-sm">
+    <div ref="shellEl" class="network-map-shell relative isolate z-0 h-full overflow-hidden rounded-2xl border border-theme shadow-sm">
         <div ref="mapEl" class="network-map h-full w-full" />
 
         <div
@@ -147,6 +147,7 @@ const emit = defineEmits([
 ]);
 
 const mapEl = ref(null);
+const shellEl = ref(null);
 const draggingPointId = ref(null);
 const hasInitialFit = ref(false);
 const liveLocationActive = ref(false);
@@ -160,6 +161,7 @@ let map = null;
 let osmLayer = null;
 let satelliteLayer = null;
 let resizeHandler = null;
+let resizeObserver = null;
 let markersLayer = null;
 let cablesLayer = null;
 let flowLayer = null;
@@ -1526,6 +1528,15 @@ onMounted(() => {
     };
 
     window.addEventListener('resize', resizeHandler);
+
+    if (shellEl.value) {
+        resizeObserver = new ResizeObserver(() => {
+            if (map) {
+                map.invalidateSize();
+            }
+        });
+        resizeObserver.observe(shellEl.value);
+    }
 });
 
 onBeforeUnmount(() => {
@@ -1535,6 +1546,8 @@ onBeforeUnmount(() => {
     if (resizeHandler) {
         window.removeEventListener('resize', resizeHandler);
     }
+
+    resizeObserver?.disconnect();
 
     if (map) {
         map.off();

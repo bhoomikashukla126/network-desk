@@ -1,6 +1,9 @@
 <template>
-    <div class="app-shell flex min-h-screen flex-col">
-        <header class="app-header sticky top-0 border-b backdrop-blur">
+    <div
+        class="app-shell flex flex-col"
+        :class="(fillViewport || !chromeVisible) ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'"
+    >
+        <header v-show="chromeVisible" class="app-header sticky top-0 border-b backdrop-blur">
             <div class="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
                 <div class="flex min-w-0 items-center gap-3">
                     <div class="bg-theme-primary flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-sm">
@@ -12,7 +15,15 @@
                     </div>
                 </div>
 
-                <UserProfileMenu v-if="session" :session="session" @open-activity="showActivityModal = true" @quotas-refreshed="onQuotasRefreshed" />
+                <div class="flex shrink-0 items-center gap-2">
+                    <AppChromeToggle
+                        :chrome-visible="chromeVisible"
+                        :label="chromeToggleLabel"
+                        @toggle="toggleChrome"
+                    />
+
+                    <UserProfileMenu v-if="session" :session="session" @open-activity="showActivityModal = true" @quotas-refreshed="onQuotasRefreshed" />
+                </div>
             </div>
 
             <nav class="app-nav border-t" aria-label="Main navigation">
@@ -57,17 +68,41 @@
             </nav>
         </header>
 
-        <main class="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <AppChromeToggle
+            v-if="!chromeVisible"
+            floating
+            :chrome-visible="chromeVisible"
+            :label="chromeToggleLabel"
+            @toggle="toggleChrome"
+        />
+
+        <main
+            class="flex-1 min-h-0"
+            :class="[
+                fillViewport ? 'flex flex-col overflow-hidden' : '',
+                chromeVisible
+                    ? (fillViewport
+                        ? 'mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-4'
+                        : 'mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8')
+                    : 'app-main-fullscreen w-full',
+            ]"
+        >
             <div v-if="loading" class="flex items-center justify-center py-24 text-theme-muted">
                 <LoaderCircle class="h-6 w-6 animate-spin" />
                 <span class="ml-2">{{ $t('common.loading') }}</span>
             </div>
-            <RouterView v-else v-slot="{ Component }">
-                <component :is="Component" :session="session" />
-            </RouterView>
+            <div v-else :class="fillViewport ? 'flex min-h-0 flex-1 flex-col' : ''">
+                <RouterView v-slot="{ Component }">
+                    <component
+                        :is="Component"
+                        :session="session"
+                        :class="fillViewport ? 'flex min-h-0 flex-1 flex-col' : ''"
+                    />
+                </RouterView>
+            </div>
         </main>
 
-        <footer class="app-footer mt-auto border-t">
+        <footer v-show="chromeVisible" class="app-footer mt-auto border-t">
             <div class="mx-auto flex w-full max-w-7xl flex-col gap-2 px-4 py-6 text-sm text-theme-muted sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
                 <p>&copy; {{ year }} {{ $t('app.name') }}. {{ $t('app.footer') }}</p>
                 <p v-if="session?.workspace?.name">{{ $t('app.activeWorkspace') }} <span class="font-medium text-theme-body">{{ session.workspace.name }}</span></p>
@@ -89,19 +124,25 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { LayoutDashboard, ListTree, LoaderCircle, Map, Network, Shield } from 'lucide-vue-next';
 import { api } from '../api/client';
+import { useAppChrome } from '../composables/useAppChrome';
 import { setLocaleFromWorkspace } from '../i18n';
 import { applyWorkspaceAppearance, watchSystemColorMode } from '../utils/applyWorkspaceAppearance';
+import AppChromeToggle from '../components/AppChromeToggle.vue';
 import UserProfileMenu from '../components/UserProfileMenu.vue';
 import ActivityLogModal from '../components/ActivityLogModal.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
+
+const CHROME_STORAGE_KEY = 'network-desk-app-chrome-visible';
 
 const route = useRoute();
 const session = ref(null);
 const loading = ref(true);
 const showActivityModal = ref(false);
 const year = new Date().getFullYear();
+const { chromeVisible, chromeToggleLabel, toggleChrome } = useAppChrome(CHROME_STORAGE_KEY);
 
 const canManageAccess = computed(() => session.value?.can_manage_roles || session.value?.can_manage_members);
+const fillViewport = computed(() => route.matched.some((record) => record.meta?.fillViewport));
 
 function isActive(name) {
     return route.name === name;

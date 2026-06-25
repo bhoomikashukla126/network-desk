@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\NetworkPoint;
 use App\Services\ActivityLogService;
 use App\Services\PointDeviceSyncService;
+use App\Support\ActivityLogDetailsBuilder;
 use App\Support\CableTypeCatalog;
 use App\Support\NetworkCatalog;
+use App\Support\NetworkPointSnapshot;
 use App\Support\PointTypes;
 use App\Support\WorkspaceSession;
 use Illuminate\Http\JsonResponse;
@@ -178,6 +180,9 @@ class NetworkPointController extends Controller
             'network_point',
             (string) $point->id,
             $point->name,
+            ActivityLogDetailsBuilder::created(
+                NetworkPointSnapshot::fields($point->fresh()->load(['devices.ports'])),
+            ),
         );
 
         return response()->json(['data' => $point->load(['images', 'devices.ports'])], 201);
@@ -189,6 +194,7 @@ class NetworkPointController extends Controller
 
         [$validated, $devices] = $this->validated($request);
 
+        $before = NetworkPointSnapshot::fields($networkPoint->load(['devices.ports']));
         $networkPoint->update($validated);
         $this->deviceSync->sync($networkPoint, $devices);
 
@@ -198,6 +204,10 @@ class NetworkPointController extends Controller
             'network_point',
             (string) $networkPoint->id,
             $networkPoint->name,
+            ActivityLogDetailsBuilder::updated(
+                $before,
+                NetworkPointSnapshot::fields($networkPoint->fresh()->load(['devices.ports'])),
+            ),
         );
 
         return response()->json(['data' => $networkPoint->fresh()->load(['images', 'devices.ports'])]);
@@ -209,6 +219,9 @@ class NetworkPointController extends Controller
 
         $name = $networkPoint->name;
         $id = (string) $networkPoint->id;
+        $metadata = ActivityLogDetailsBuilder::deleted(
+            NetworkPointSnapshot::fields($networkPoint->load(['devices.ports'])),
+        );
 
         $networkPoint->delete();
 
@@ -218,6 +231,7 @@ class NetworkPointController extends Controller
             'network_point',
             $id,
             $name,
+            $metadata,
         );
 
         return response()->json(['message' => 'Point deleted.']);

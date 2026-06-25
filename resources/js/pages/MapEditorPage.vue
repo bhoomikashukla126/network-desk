@@ -1,6 +1,6 @@
 <template>
-    <div class="space-y-4">
-        <section class="app-card rounded-2xl border p-4 shadow-sm sm:p-6">
+    <div class="map-editor-page flex min-h-0 flex-1 flex-col gap-4">
+        <section class="app-card shrink-0 rounded-2xl border p-4 shadow-sm sm:p-6">
             <div>
                 <h1 class="text-2xl font-bold text-theme-heading">{{ $t('map.title') }}</h1>
                 <p class="mt-1 text-sm text-theme-muted">{{ $t('map.description') }}</p>
@@ -57,7 +57,7 @@
 
         <div
             v-if="!permissions.create"
-            class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
+            class="shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100"
         >
             <p class="font-medium">{{ $t('map.viewOnlyTitle') }}</p>
             <p class="mt-1 opacity-90">{{ $t('map.viewOnlyHint') }}</p>
@@ -65,7 +65,7 @@
 
         <div
             v-if="showSidePanel"
-            class="grid grid-cols-2 gap-2 xl:hidden"
+            class="grid shrink-0 grid-cols-2 gap-2 xl:hidden"
             role="tablist"
             :aria-label="$t('map.mobileViewTabs')"
         >
@@ -91,9 +91,9 @@
             </button>
         </div>
 
-        <div class="grid items-stretch gap-4" :class="showSidePanel ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : ''">
+        <div class="grid min-h-0 flex-1 items-stretch gap-4" :class="showSidePanel ? 'xl:grid-cols-[minmax(0,1fr)_380px]' : ''">
             <div
-                class="map-editor-map relative h-[580px] min-h-[580px]"
+                class="map-editor-map relative min-h-0 h-full"
                 :class="mapPanelClass"
             >
                 <button
@@ -134,7 +134,7 @@
 
             <div
                 v-if="showSidePanel"
-                class="map-editor-panel h-[580px] min-h-[580px]"
+                class="map-editor-panel min-h-0 h-full"
                 :class="sidePanelClass"
                 @mousedown.stop
                 @pointerdown.stop

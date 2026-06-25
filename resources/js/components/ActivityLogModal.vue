@@ -130,7 +130,7 @@
                                                 </span>
                                             </td>
                                             <td class="px-4 py-3 text-theme-body">
-                                                <p>{{ log.description }}</p>
+                                                <ActivityLogDetails :log="log" />
                                             </td>
                                         </tr>
                                     </tbody>
@@ -152,7 +152,7 @@
                                             {{ translateActionLabel(log.action, log.action_label) }}
                                         </span>
                                     </div>
-                                    <p class="mt-3 break-words text-sm text-theme-body">{{ log.description }}</p>
+                                    <ActivityLogDetails :log="log" root-class="mt-3" />
                                 </article>
                             </div>
 
@@ -170,6 +170,7 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { LoaderCircle, ScrollText, X } from 'lucide-vue-next';
 import { api } from '../api/client';
+import ActivityLogDetails from './ActivityLogDetails.vue';
 import Pagination from './Pagination.vue';
 
 const props = defineProps({
