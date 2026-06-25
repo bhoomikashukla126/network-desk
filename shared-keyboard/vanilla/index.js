@@ -92,6 +92,10 @@ export function createKeyboardManager({
                 return;
             }
 
+            if (event.target?.closest?.('[data-keyboard-shortcuts-modal]')) {
+                return;
+            }
+
             if ((modalOpen || isOverlayOpen()) && event.key !== 'Escape') {
                 return;
             }
@@ -166,8 +170,8 @@ export function initKeyboardShortcutsModal(manager, rootId = 'keyboard-shortcuts
         const grouped = actionsByCategory();
 
         root.innerHTML = `
-            <div data-shortcuts-backdrop class="fixed inset-0 z-[80] flex items-end justify-center p-0 sm:items-center sm:p-4 hidden">
-                <div class="flex h-[100dvh] w-full min-h-0 flex-col overflow-hidden border-theme bg-theme-card shadow-2xl sm:h-auto sm:max-h-[90vh] sm:max-w-3xl sm:rounded-2xl sm:border" role="dialog" aria-modal="true" aria-label="${t('title')}">
+            <div data-shortcuts-backdrop data-keyboard-shortcuts-modal class="fixed inset-0 z-[80] flex items-end justify-center p-0 sm:items-center sm:p-4 hidden">
+                <div class="flex h-[100dvh] w-full min-h-0 flex-col overflow-hidden border-theme bg-theme-card shadow-2xl sm:h-auto sm:max-h-[90vh] sm:max-w-3xl sm:rounded-2xl sm:border" role="dialog" aria-modal="true" data-keyboard-shortcuts-modal aria-label="${t('title')}">
                     <div class="flex items-start justify-between gap-4 border-b border-theme px-4 py-4 sm:px-6">
                         <div>
                             <h2 class="text-lg font-bold text-theme-heading">${t('title')}</h2>

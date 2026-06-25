@@ -33,6 +33,22 @@ export function createUseKeyboardShortcuts({
         }
     }
 
+    function overlayOpen() {
+        if (!isOverlayOpen) {
+            return false;
+        }
+
+        if (typeof isOverlayOpen === 'function') {
+            return Boolean(isOverlayOpen());
+        }
+
+        return Boolean(isOverlayOpen.value);
+    }
+
+    function isInsideShortcutsModal(event) {
+        return Boolean(event.target?.closest?.('[data-keyboard-shortcuts-modal]'));
+    }
+
     async function saveShortcutOverrides(overrides) {
         if (!session?.value) {
             return;
@@ -43,6 +59,9 @@ export function createUseKeyboardShortcuts({
         try {
             shortcutOverrides.value = await preferencesApi.saveKeyboardShortcuts(session.value, overrides);
             dispatchAppEvent(events.shortcutsChanged, { shortcuts: shortcutMap.value });
+        } catch (error) {
+            console.error('Failed to save keyboard shortcuts', error);
+            throw error;
         } finally {
             saving.value = false;
         }
@@ -79,7 +98,11 @@ export function createUseKeyboardShortcuts({
             return;
         }
 
-        if (isOverlayOpen?.value && event.key !== 'Escape') {
+        if (isInsideShortcutsModal(event)) {
+            return;
+        }
+
+        if (overlayOpen() && event.key !== 'Escape') {
             return;
         }
 

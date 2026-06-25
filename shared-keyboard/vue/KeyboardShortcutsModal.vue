@@ -3,12 +3,14 @@
         <div
             v-if="open"
             class="fixed inset-0 z-[80] flex items-end justify-center p-0 sm:items-center sm:p-4"
+            data-keyboard-shortcuts-modal
             @click.self="emit('close')"
         >
             <div
                 class="flex h-[100dvh] w-full min-h-0 flex-col overflow-hidden border-theme bg-theme-card shadow-2xl sm:h-auto sm:max-h-[90vh] sm:max-w-3xl sm:rounded-2xl sm:border"
                 role="dialog"
                 aria-modal="true"
+                data-keyboard-shortcuts-modal
                 :aria-label="t('shortcuts.title')"
             >
                 <div class="flex items-start justify-between gap-4 border-b border-theme px-4 py-4 sm:px-6">

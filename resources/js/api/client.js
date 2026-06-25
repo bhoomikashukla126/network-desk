@@ -5,18 +5,27 @@ function csrfToken() {
 }
 
 export async function api(url, options = {}) {
+    const { body, headers: optionHeaders, ...fetchOptions } = options;
+
     const headers = {
         Accept: 'application/json',
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
         'X-CSRF-TOKEN': csrfToken(),
-        ...(options.headers ?? {}),
+        ...(optionHeaders ?? {}),
     };
+
+    let resolvedBody = body;
+
+    if (body !== undefined && body !== null && typeof body === 'object' && !(body instanceof FormData)) {
+        resolvedBody = JSON.stringify(body);
+    }
 
     const response = await fetch(url, {
         credentials: 'same-origin',
-        ...options,
+        ...fetchOptions,
         headers,
+        body: resolvedBody,
     });
 
     const payload = await response.json().catch(() => ({}));

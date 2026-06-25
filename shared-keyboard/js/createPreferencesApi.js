@@ -36,7 +36,7 @@ export function createPreferencesApi({ appId, apiClient, endpoints = {} }) {
 
         const response = await apiClient(updateUrl, {
             method: 'PUT',
-            body: JSON.stringify({ preferences }),
+            body: { preferences },
         });
 
         const saved = response?.preferences ?? response?.data?.preferences ?? preferences;

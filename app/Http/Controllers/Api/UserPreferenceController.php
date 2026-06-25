@@ -41,13 +41,23 @@ class UserPreferenceController extends Controller
             'preferences.keyboard_shortcuts' => ['sometimes', 'array'],
         ]);
 
+        $existing = UserPreference::query()
+            ->where('workspace_id', $workspaceId)
+            ->where('central_user_id', $centralUserId)
+            ->first();
+
+        $mergedPreferences = array_replace_recursive(
+            is_array($existing?->preferences) ? $existing->preferences : [],
+            $validated['preferences'],
+        );
+
         $record = UserPreference::query()->updateOrCreate(
             [
                 'workspace_id' => $workspaceId,
                 'central_user_id' => $centralUserId,
             ],
             [
-                'preferences' => $validated['preferences'],
+                'preferences' => $mergedPreferences,
             ],
         );
 
