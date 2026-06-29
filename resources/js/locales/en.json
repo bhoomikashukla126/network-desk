@@ -437,6 +437,8 @@
         "myActivity": "My activity",
         "workspaces": "Workspaces",
         "workspaceHome": "Workspace home",
+        "myPreferences": "My preferences",
+        "reportBug": "Report a bug",
         "help": "Help & wiki",
         "logout": "Logout",
         "keyboardShortcuts": "Keyboard shortcuts"
@@ -475,6 +477,42 @@
             "navAccess": "Go to roles & members",
             "activityLog": "Open activity log"
         }
+    },
+    "preferences": {
+        "title": "My preferences",
+        "description": "Choose your own language, theme, and appearance for this workspace. These settings apply only to you.",
+        "workspaceDefaultsHint": "Workspace defaults: {language} · {theme} · {mode}",
+        "language": "Language",
+        "themeColor": "Theme color",
+        "colorMode": "Appearance",
+        "useWorkspaceDefault": "Use workspace default",
+        "save": "Save preferences",
+        "updated": "Your preferences were saved.",
+        "close": "Close preferences",
+        "loadError": "Could not load preferences.",
+        "saveError": "Could not save preferences.",
+        "colorModes": {
+            "light": "Light",
+            "dark": "Dark",
+            "system": "System"
+        }
+    },
+    "bugReport": {
+        "title": "Report a bug",
+        "description": "Tell us what went wrong. Your report is sent to the platform team and you can track its status below.",
+        "issueTitle": "Issue title",
+        "issueTitlePlaceholder": "Short summary of the problem",
+        "issueDescription": "What happened?",
+        "issueDescriptionPlaceholder": "Describe what you expected, what happened instead, and steps to reproduce if you can.",
+        "pageUrlHint": "The current page ({url}) will be included automatically.",
+        "submit": "Submit bug report",
+        "submitted": "Your bug report was submitted.",
+        "close": "Close bug report",
+        "loadError": "Could not load your bug reports.",
+        "submitError": "Could not submit your bug report.",
+        "myReports": "My bug reports",
+        "myReportsHint": "Status updates from the platform team appear here.",
+        "noReports": "You have not reported any bugs yet."
     },
     "activity": {
         "descriptionAll": "All actions across this workspace.",

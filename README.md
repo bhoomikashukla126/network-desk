@@ -35,3 +35,7 @@ php artisan extensions:configure network-desk \
   --icon="🗺️"
 php artisan extensions:show-credentials network-desk
 ```
+
+## Laravel Cloud bucket
+
+Attach a **public** bucket named **`public`** for cable and point photos. Same setup as Menu Card — see `../../Laravel-project/DEPLOYMENT.md`.

@@ -34,6 +34,8 @@
                         :session="session"
                         @open-activity="showActivityModal = true"
                         @open-shortcuts="showShortcutsModal = true"
+                        @open-preferences="showPreferencesModal = true"
+                        @open-bug-report="showBugReportModal = true"
                         @quotas-refreshed="onQuotasRefreshed"
                     />
                 </div>
@@ -142,6 +144,17 @@
             @reset="resetShortcut"
             @reset-all="resetAllShortcuts"
         />
+
+        <UserPreferencesModal
+            :open="showPreferencesModal"
+            @close="showPreferencesModal = false"
+            @saved="onPreferencesSaved"
+        />
+
+        <ReportBugModal
+            :open="showBugReportModal"
+            @close="showBugReportModal = false"
+        />
     </div>
 </template>
 
@@ -159,6 +172,8 @@ import UserProfileMenu from '../components/UserProfileMenu.vue';
 import ActivityLogModal from '../components/ActivityLogModal.vue';
 import ConfirmDialog from '../components/ConfirmDialog.vue';
 import KeyboardShortcutsModal from '@platform/keyboard/vue/KeyboardShortcutsModal.vue';
+import UserPreferencesModal from '../components/UserPreferencesModal.vue';
+import ReportBugModal from '../components/ReportBugModal.vue';
 
 const CHROME_STORAGE_KEY = 'network-desk-app-chrome-visible';
 
@@ -167,13 +182,15 @@ const session = ref(null);
 const loading = ref(true);
 const showActivityModal = ref(false);
 const showShortcutsModal = ref(false);
+const showPreferencesModal = ref(false);
+const showBugReportModal = ref(false);
 const year = new Date().getFullYear();
 const { chromeVisible, chromeToggleLabel, toggleChrome } = useAppChrome(CHROME_STORAGE_KEY);
 
 const canManageAccess = computed(() => session.value?.can_manage_roles || session.value?.can_manage_members);
 const fillViewport = computed(() => route.matched.some((record) => record.meta?.fillViewport));
 
-const isShortcutOverlayOpen = computed(() => showShortcutsModal.value || showActivityModal.value);
+const isShortcutOverlayOpen = computed(() => showShortcutsModal.value || showActivityModal.value || showPreferencesModal.value || showBugReportModal.value);
 
 const {
     shortcutMap,
@@ -205,6 +222,35 @@ function navClass(active) {
     return active ? 'app-nav-link-active' : 'app-nav-link';
 }
 
+function onPreferencesSaved(context) {
+    if (!session.value) {
+        return;
+    }
+
+    if (context) {
+        session.value = {
+            ...session.value,
+            workspace: {
+                ...session.value.workspace,
+                language: context.language ?? session.value.workspace?.language,
+                theme_key: context.theme_key ?? session.value.workspace?.theme_key,
+                color_mode: context.color_mode ?? session.value.workspace?.color_mode,
+                appearance: context.appearance ?? session.value.workspace?.appearance,
+            },
+            locale: context.language ?? session.value.locale,
+        };
+    } else {
+        api('/api/session').then((data) => {
+            session.value = data;
+        }).catch(() => {});
+    }
+
+    setLocaleFromWorkspace(session.value?.workspace?.language ?? session.value?.locale);
+    applyWorkspaceAppearance(session.value?.workspace);
+    unwatchColorMode();
+    unwatchColorMode = watchSystemColorMode(session.value?.workspace);
+}
+
 function onQuotasRefreshed(quotas) {
     if (session.value) {
         session.value = { ...session.value, quotas };
@@ -218,6 +264,8 @@ function onShortcutSave(actionId, combo) {
 function closeOverlays() {
     showShortcutsModal.value = false;
     showActivityModal.value = false;
+    showPreferencesModal.value = false;
+    showBugReportModal.value = false;
     window.dispatchEvent(new CustomEvent('network-desk:close-profile-menu'));
 }
 

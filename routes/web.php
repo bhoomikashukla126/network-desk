@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\ActivityLogController;
+use App\Http\Controllers\Api\BugReportController;
 use App\Http\Controllers\Api\CableImageController;
 use App\Http\Controllers\Api\CableSegmentController;
 use App\Http\Controllers\Api\MediaUploadController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\Api\PointImageController;
 use App\Http\Controllers\Api\WorkspaceCableTypeController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\SessionController;
+use App\Http\Controllers\Api\KeyboardUserPreferenceController;
 use App\Http\Controllers\Api\UserPreferenceController;
 use App\Http\Controllers\AppController;
 use App\Http\Controllers\Auth\CentralAuthController;
@@ -38,8 +40,12 @@ Route::middleware([
     Route::prefix('api')->group(function () {
         Route::get('/session', [SessionController::class, 'show']);
         Route::post('/session/quotas/refresh', [SessionController::class, 'refreshQuotas']);
-        Route::get('/user/preferences', [UserPreferenceController::class, 'show']);
-        Route::put('/user/preferences', [UserPreferenceController::class, 'update']);
+        Route::get('/user-preferences', [UserPreferenceController::class, 'show']);
+        Route::put('/user-preferences', [UserPreferenceController::class, 'update']);
+        Route::get('/user/preferences', [KeyboardUserPreferenceController::class, 'show']);
+        Route::put('/user/preferences', [KeyboardUserPreferenceController::class, 'update']);
+        Route::get('/bug-reports', [BugReportController::class, 'index']);
+        Route::post('/bug-reports', [BugReportController::class, 'store']);
 
         Route::middleware(TrackWorkspaceQuota::class)->group(function () {
             Route::get('/activity', [ActivityLogController::class, 'index']);

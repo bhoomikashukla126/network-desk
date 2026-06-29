@@ -3,66 +3,69 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\UserPreference;
-use App\Support\WorkspaceSession;
+use App\Services\CentralUserPreferenceService;
+use App\Support\WorkspaceAppearance;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class UserPreferenceController extends Controller
 {
+    public function __construct(
+        protected CentralUserPreferenceService $preferences,
+    ) {}
+
     public function show(Request $request): JsonResponse
     {
-        $workspaceId = WorkspaceSession::id($request);
-        $user = $request->session()->get('central_user', []);
-        $centralUserId = $user['sub'] ?? null;
-
-        abort_unless($workspaceId && $centralUserId, 403);
-
-        $record = UserPreference::query()
-            ->where('workspace_id', $workspaceId)
-            ->where('central_user_id', $centralUserId)
-            ->first();
-
         return response()->json([
-            'preferences' => $record?->preferences ?? [],
+            'data' => $this->preferences->fetch($request),
+            'themes' => $this->themeOptions(),
+            'languages' => config('workspace.languages'),
+            'color_modes' => WorkspaceAppearance::COLOR_MODES,
         ]);
     }
 
     public function update(Request $request): JsonResponse
     {
-        $workspaceId = WorkspaceSession::id($request);
-        $user = $request->session()->get('central_user', []);
-        $centralUserId = $user['sub'] ?? null;
-
-        abort_unless($workspaceId && $centralUserId, 403);
-
         $validated = $request->validate([
-            'preferences' => ['required', 'array'],
-            'preferences.keyboard_shortcuts' => ['sometimes', 'array'],
+            'use_workspace_language' => ['nullable', 'boolean'],
+            'language' => ['nullable', 'string', Rule::in(array_keys(config('workspace.languages')))],
+            'use_workspace_theme' => ['nullable', 'boolean'],
+            'theme_key' => ['nullable', 'string', Rule::in(array_keys(config('themes')))],
+            'use_workspace_color_mode' => ['nullable', 'boolean'],
+            'color_mode' => ['nullable', 'string', Rule::in(WorkspaceAppearance::COLOR_MODES)],
         ]);
 
-        $existing = UserPreference::query()
-            ->where('workspace_id', $workspaceId)
-            ->where('central_user_id', $centralUserId)
-            ->first();
+        $input = [
+            'language' => $request->boolean('use_workspace_language') ? null : ($validated['language'] ?? null),
+            'theme_key' => $request->boolean('use_workspace_theme') ? null : ($validated['theme_key'] ?? null),
+            'color_mode' => $request->boolean('use_workspace_color_mode') ? null : ($validated['color_mode'] ?? null),
+        ];
 
-        $mergedPreferences = array_replace_recursive(
-            is_array($existing?->preferences) ? $existing->preferences : [],
-            $validated['preferences'],
-        );
-
-        $record = UserPreference::query()->updateOrCreate(
-            [
-                'workspace_id' => $workspaceId,
-                'central_user_id' => $centralUserId,
-            ],
-            [
-                'preferences' => $mergedPreferences,
-            ],
-        );
+        $data = $this->preferences->save($request, $input);
 
         return response()->json([
-            'preferences' => $record->preferences ?? [],
+            'data' => $data,
+            'message' => __('preferences.updated'),
         ]);
+    }
+
+    /**
+     * @return array<string, array{name: string, primary: string, secondary: string, accent: string}>
+     */
+    private function themeOptions(): array
+    {
+        $themes = config('themes', []);
+
+        return collect($themes)
+            ->map(fn (array $theme, string $key) => [
+                'key' => $key,
+                'name' => $theme['name'] ?? $key,
+                'primary' => $theme['primary'] ?? '#3B82F6',
+                'secondary' => $theme['secondary'] ?? '#10B981',
+                'accent' => $theme['accent'] ?? '#8B5CF6',
+            ])
+            ->keyBy('key')
+            ->all();
     }
 }

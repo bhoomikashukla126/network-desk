@@ -86,6 +86,15 @@
                     <button
                         type="button"
                         class="hover-surface flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-theme-body transition"
+                        @click="openPreferences"
+                    >
+                        <Palette class="h-4 w-4 text-theme-muted" />
+                        {{ t('profile.myPreferences') }}
+                    </button>
+
+                    <button
+                        type="button"
+                        class="hover-surface flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-theme-body transition"
                         @click="openActivity"
                     >
                         <ScrollText class="h-4 w-4 text-theme-muted" />
@@ -99,6 +108,15 @@
                     >
                         <Keyboard class="h-4 w-4 text-theme-muted" />
                         {{ t('profile.keyboardShortcuts') }}
+                    </button>
+
+                    <button
+                        type="button"
+                        class="hover-surface flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-theme-body transition"
+                        @click="openBugReport"
+                    >
+                        <Bug class="h-4 w-4 text-theme-muted" />
+                        {{ t('profile.reportBug') }}
                     </button>
 
                     <a
@@ -151,7 +169,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { ArrowLeft, BookOpen, ChevronDown, Home, Keyboard, LogOut, RefreshCw, ScrollText } from 'lucide-vue-next';
+import { ArrowLeft, BookOpen, Bug, ChevronDown, Home, Keyboard, LogOut, Palette, RefreshCw, ScrollText } from 'lucide-vue-next';
 import { api } from '../api/client';
 import { formatStorageBytes } from '../utils/formatStorage';
 
@@ -159,7 +177,7 @@ const props = defineProps({
     session: { type: Object, required: true },
 });
 
-const emit = defineEmits(['open-activity', 'open-shortcuts', 'quotas-refreshed']);
+const emit = defineEmits(['open-activity', 'open-shortcuts', 'open-preferences', 'open-bug-report', 'quotas-refreshed']);
 
 const { t } = useI18n();
 
@@ -224,9 +242,19 @@ function close() {
     open.value = false;
 }
 
+function openPreferences() {
+    close();
+    emit('open-preferences');
+}
+
 function openActivity() {
     close();
     emit('open-activity');
+}
+
+function openBugReport() {
+    close();
+    emit('open-bug-report');
 }
 
 function openShortcuts() {

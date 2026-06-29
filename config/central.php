@@ -8,4 +8,5 @@ return [
     'client_secret' => env('CLIENT_SECRET'),
     'redirect_uri' => env('REDIRECT_URI') ?: $appUrl.'/auth/callback',
     'scopes' => 'openid profile email workspace',
+    'slug' => env('EXTENSION_SLUG', 'network-desk'),
 ];
